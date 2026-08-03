@@ -30,6 +30,9 @@ class Room(models.Model):
     current_round_num = models.IntegerField(default=0)
     phase = models.CharField(max_length=20, choices=PHASE_CHOICES, default=PHASE_LOBBY)
     
+    smart_ai_enabled = models.BooleanField(default=True)
+    custom_theme = models.CharField(max_length=100, blank=True, default='')
+
     current_drawer_nickname = models.CharField(max_length=50, blank=True, default='')
     current_word = models.CharField(max_length=100, blank=True, default='')
     word_hint = models.CharField(max_length=100, blank=True, default='')
@@ -44,7 +47,7 @@ class Room(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Room {self.code} ({self.phase} - R{self.current_round_num}/{self.total_rounds})"
+        return f"Room {self.code} ({self.phase} - AI:{self.smart_ai_enabled})"
 
 
 class Player(models.Model):
@@ -53,6 +56,7 @@ class Player(models.Model):
     nickname = models.CharField(max_length=50)
     is_host = models.BooleanField(default=False)
     is_connected = models.BooleanField(default=True)
+    is_ai = models.BooleanField(default=False)
     
     score = models.IntegerField(default=0)
     has_guessed = models.BooleanField(default=False)
@@ -65,7 +69,7 @@ class Player(models.Model):
         unique_together = ('room', 'nickname')
 
     def __str__(self):
-        return f"{self.nickname} ({self.score} pts) in {self.room.code}"
+        return f"{self.nickname} ({'AI' if self.is_ai else 'User'} - {self.score} pts) in {self.room.code}"
 
 
 class Round(models.Model):
@@ -128,9 +132,10 @@ class Word(models.Model):
         (DIFFICULTY_HARD, 'Hard'),
     ]
 
-    word = models.CharField(max_length=100, unique=True)
+    word = models.CharField(max_length=100)
     difficulty = models.CharField(max_length=20, choices=DIFFICULTY_CHOICES, default=DIFFICULTY_EASY)
     category = models.CharField(max_length=50, default='general')
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, null=True, blank=True, related_name='custom_words')
 
     def __str__(self):
-        return f"{self.word} ({self.difficulty})"
+        return f"{self.word} ({self.difficulty} - {self.category})"

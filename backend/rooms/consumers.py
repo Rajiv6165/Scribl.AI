@@ -1,12 +1,16 @@
+import asyncio
 import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from .services import (
     async_join_room,
     async_leave_room,
+    async_toggle_smart_ai,
+    async_generate_and_apply_custom_word_pack,
     async_start_game,
     async_start_word_selection,
     async_select_word,
     async_submit_guess,
+    async_execute_ai_guess_attempt,
     async_end_round,
     async_next_turn,
     async_record_stroke_event,
@@ -22,6 +26,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.room_code = None
         self.room_group_name = None
         self.nickname = None
+        self.ai_task = None
 
     async def connect(self):
         self.room_code = self.scope['url_route']['kwargs']['room_code'].upper()
@@ -61,6 +66,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
         if action_type == 'join_room':
             await self.handle_join_room(content)
+        elif action_type == 'toggle_ai':
+            await self.handle_toggle_ai(content)
+        elif action_type == 'generate_word_pack':
+            await self.handle_generate_word_pack(content)
         elif action_type == 'start_game':
             await self.handle_start_game(content)
         elif action_type == 'select_word':
@@ -85,13 +94,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         join_data = await async_join_room(self.room_code, nickname, self.channel_name)
         history = await async_get_canvas_history(self.room_code)
 
-        # 1. Send state directly to joining client
         await self.send_json({
             'type': 'room_state',
             'room_code': self.room_code,
             'nickname': self.nickname,
             'is_host': join_data.get('is_host', False),
             'phase': join_data.get('phase', 'LOBBY'),
+            'smart_ai_enabled': join_data.get('smart_ai_enabled', True),
+            'custom_theme': join_data.get('custom_theme', ''),
             'current_round_num': join_data.get('current_round_num', 0),
             'total_rounds': join_data.get('total_rounds', 3),
             'current_drawer': join_data.get('current_drawer', ''),
@@ -102,7 +112,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             'canvas_history': history,
         })
 
-        # 2. Broadcast join event to all room members
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -111,6 +120,46 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'players': join_data.get('players', []),
             }
         )
+
+    async def handle_toggle_ai(self, content):
+        enabled = content.get('enabled', True)
+        result = await async_toggle_smart_ai(self.room_code, enabled)
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'player_joined_event',
+                'nickname': 'System',
+                'players': result.get('players', []),
+            }
+        )
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'chat_message_event',
+                'nickname': 'System',
+                'text': f"🤖 Smart AI Bot {'enabled' if enabled else 'disabled'}.",
+                'is_system': True,
+            }
+        )
+
+    async def handle_generate_word_pack(self, content):
+        theme = content.get('theme', '')
+        try:
+            result = await async_generate_and_apply_custom_word_pack(self.room_code, theme)
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'chat_message_event',
+                    'nickname': 'System',
+                    'text': f"✨ AI Word Pack generated for theme '{result['custom_theme']}' ({result['word_count']} words)!",
+                    'is_system': True,
+                }
+            )
+        except Exception as err:
+            await self.send_json({"error": str(err)})
 
     async def handle_start_game(self, content):
         try:
@@ -138,7 +187,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             guesser_nickname = result['player_nickname']
             pts = result['guesser_points']
 
-            # Broadcast correct guess alert (secret word is hidden!)
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -149,7 +197,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 }
             )
 
-            # Broadcast system message to chat
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -160,13 +207,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 }
             )
 
-            # Check if all guessers are finished -> trigger round end
             if result.get('all_guessed'):
                 end_res = await async_end_round(self.room_code)
                 await self.broadcast_phase_update(end_res)
 
         else:
-            # Normal chat message
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
@@ -180,18 +225,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def handle_timer_expired(self, content):
         phase = content.get('phase', '')
         if phase == 'WORD_SELECT':
-            # Auto select word if drawer timed out
             try:
                 result = await async_select_word(self.room_code, self.nickname, "CAT")
                 await self.broadcast_phase_update(result)
             except Exception:
                 pass
         elif phase == 'DRAWING':
-            # Drawing time expired -> end round
             end_res = await async_end_round(self.room_code)
             await self.broadcast_phase_update(end_res)
         elif phase == 'ROUND_END':
-            # Round summary ended -> start next turn
             next_res = await async_next_turn(self.room_code)
             await self.broadcast_phase_update(next_res)
 
@@ -224,6 +266,45 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'payload': payload,
             }
         )
+
+        # Trigger background AI guess attempt silently
+        asyncio.create_task(self.trigger_background_ai_guess())
+
+    async def trigger_background_ai_guess(self):
+        """Asynchronously attempts an AI player guess without blocking WS draw messages."""
+        try:
+            ai_res = await async_execute_ai_guess_attempt(self.room_code)
+            if ai_res.get('executed') and ai_res.get('is_correct'):
+                sub_res = ai_res.get('submit_result', {})
+                guesser_nickname = sub_res.get('player_nickname', 'Scribl-Bot')
+                pts = sub_res.get('guesser_points', 500)
+
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'correct_guess_event',
+                        'nickname': guesser_nickname,
+                        'guesser_points': pts,
+                        'players': sub_res.get('players', []),
+                    }
+                )
+
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'chat_message_event',
+                        'nickname': 'System',
+                        'text': f"🤖 Scribl-Bot guessed the word! (+{pts} pts)",
+                        'is_system': True,
+                    }
+                )
+
+                if sub_res.get('all_guessed'):
+                    end_res = await async_end_round(self.room_code)
+                    await self.broadcast_phase_update(end_res)
+
+        except Exception as err:
+            logger.error(f"Background AI guess error: {err}")
 
     async def handle_clear_canvas(self, content):
         nickname = content.get('nickname', self.nickname or 'Anonymous')
@@ -268,7 +349,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         phase_data = dict(event['phase_data'])
         drawer = phase_data.get('current_drawer', '')
 
-        # Anti-Cheating Protection: Send word_choices ONLY to current drawer
         if self.nickname.lower() != drawer.lower():
             phase_data.pop('word_choices', None)
 

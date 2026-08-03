@@ -14,9 +14,14 @@ class CreateRoomView(APIView):
 
         nickname = serializer.validated_data['nickname']
         max_players = serializer.validated_data.get('max_players', 10)
+        smart_ai_enabled = request.data.get('smart_ai_enabled', True)
 
         try:
-            result = RoomService.create_room(host_nickname=nickname, max_players=max_players)
+            result = RoomService.create_room(
+                host_nickname=nickname,
+                max_players=max_players,
+                smart_ai_enabled=smart_ai_enabled
+            )
             return Response(result, status=status.HTTP_201_CREATED)
         except ValueError as err:
             return Response({'error': str(err)}, status=status.HTTP_400_BAD_REQUEST)
@@ -37,6 +42,21 @@ class JoinRoomView(APIView):
             return Response(result, status=status.HTTP_200_OK)
         except ValueError as err:
             return Response({'error': str(err)}, status=status.HTTP_404_NOT_FOUND)
+
+
+class GenerateWordPackView(APIView):
+    def post(self, request):
+        room_code = request.data.get('room_code', '')
+        theme = request.data.get('theme', '')
+
+        if not room_code or not theme:
+            return Response({'error': 'room_code and theme are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = RoomService.generate_and_apply_custom_word_pack(room_code=room_code, theme=theme)
+            return Response(result, status=status.HTTP_200_OK)
+        except ValueError as err:
+            return Response({'error': str(err)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RoomDetailView(APIView):

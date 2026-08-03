@@ -29,8 +29,10 @@ export function useRoomSocket({
   const [players, setPlayers] = useState<Player[]>([]);
   const [isHost, setIsHost] = useState(false);
 
-  // Game Loop State
+  // Game Loop & AI State
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
+  const [smartAIEnabled, setSmartAIEnabled] = useState<boolean>(true);
+  const [customTheme, setCustomTheme] = useState<string>('');
   const [currentRoundNum, setCurrentRoundNum] = useState<number>(0);
   const [totalRounds, setTotalRounds] = useState<number>(3);
   const [currentDrawer, setCurrentDrawer] = useState<string>('');
@@ -71,6 +73,8 @@ export function useRoomSocket({
           case 'room_state':
             setIsHost(data.is_host);
             setPhase(data.phase || 'LOBBY');
+            setSmartAIEnabled(data.smart_ai_enabled ?? true);
+            setCustomTheme(data.custom_theme || '');
             setCurrentRoundNum(data.current_round_num || 0);
             setTotalRounds(data.total_rounds || 3);
             setCurrentDrawer(data.current_drawer || '');
@@ -85,6 +89,12 @@ export function useRoomSocket({
 
           case 'game_phase_change':
             setPhase(data.phase);
+            if (data.smart_ai_enabled !== undefined) {
+              setSmartAIEnabled(data.smart_ai_enabled);
+            }
+            if (data.custom_theme !== undefined) {
+              setCustomTheme(data.custom_theme);
+            }
             setCurrentRoundNum(data.current_round_num);
             setTotalRounds(data.total_rounds);
             setCurrentDrawer(data.current_drawer || '');
@@ -106,7 +116,6 @@ export function useRoomSocket({
               setRevealedWord(data.revealed_word);
             }
 
-            // Clear local canvas when starting word selection or new round
             if (data.phase === 'WORD_SELECT') {
               if (onStateSynced) {
                 onStateSynced([]);
@@ -187,6 +196,30 @@ export function useRoomSocket({
       }
     };
   }, [connect]);
+
+  const toggleAI = useCallback((enabled: boolean) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'toggle_ai',
+          nickname,
+          enabled,
+        })
+      );
+    }
+  }, [nickname]);
+
+  const generateWordPack = useCallback((theme: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'generate_word_pack',
+          nickname,
+          theme,
+        })
+      );
+    }
+  }, [nickname]);
 
   const startGame = useCallback(() => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -274,6 +307,8 @@ export function useRoomSocket({
     players,
     isHost,
     phase,
+    smartAIEnabled,
+    customTheme,
     currentRoundNum,
     totalRounds,
     currentDrawer,
@@ -283,6 +318,8 @@ export function useRoomSocket({
     timerStartMs,
     timerDurationSec,
     chatMessages,
+    toggleAI,
+    generateWordPack,
     startGame,
     selectWord,
     sendGuess,

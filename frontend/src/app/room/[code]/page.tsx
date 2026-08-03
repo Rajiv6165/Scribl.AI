@@ -10,8 +10,10 @@ import { ChatPanel } from '../../../components/ChatPanel';
 import { WordHintDisplay } from '../../../components/WordHintDisplay';
 import { WordSelectModal } from '../../../components/WordSelectModal';
 import { RoundEndModal } from '../../../components/RoundEndModal';
+import { AIWordPackModal } from '../../../components/AIWordPackModal';
 import { RoomHeader } from '../../../components/RoomHeader';
 import { StrokePayload, StrokeEventData } from '../../../utils/types';
+import { Bot, Wand2 } from 'lucide-react';
 
 export default function RoomPage() {
   const params = useParams();
@@ -25,6 +27,7 @@ export default function RoomPage() {
   const [color, setColor] = useState<string>('#000000');
   const [brushSize, setBrushSize] = useState<number>(6);
   const [isEraser, setIsEraser] = useState<boolean>(false);
+  const [showThemeModal, setShowThemeModal] = useState<boolean>(false);
 
   const canvasRef = useRef<CanvasRef | null>(null);
 
@@ -60,6 +63,8 @@ export default function RoomPage() {
     players,
     isHost,
     phase,
+    smartAIEnabled,
+    customTheme,
     currentRoundNum,
     totalRounds,
     currentDrawer,
@@ -69,6 +74,8 @@ export default function RoomPage() {
     timerStartMs,
     timerDurationSec,
     chatMessages,
+    toggleAI,
+    generateWordPack,
     startGame,
     selectWord,
     sendGuess,
@@ -116,7 +123,47 @@ export default function RoomPage() {
       {/* Header Bar */}
       <RoomHeader roomCode={roomCode} connected={connected} />
 
-      {/* Word Hint & Timer Bar (Active during Word Select & Drawing) */}
+      {/* Host AI & Custom Theme Toolbar (Visible in LOBBY for Host) */}
+      {phase === 'LOBBY' && isHost && (
+        <div className="glass-panel px-4 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 border border-purple-500/30">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <Bot className="w-4 h-4 text-purple-400" />
+              <span>Smart AI Bot:</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => toggleAI(!smartAIEnabled)}
+              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
+                smartAIEnabled
+                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}
+            >
+              {smartAIEnabled ? 'ENABLED' : 'DISABLED'}
+            </button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {customTheme && (
+              <span className="text-xs font-semibold text-purple-300 bg-purple-950/60 px-3 py-1 rounded-xl border border-purple-800/50">
+                Theme: <strong>{customTheme}</strong>
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowThemeModal(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-extrabold shadow-md shadow-purple-500/20 transition-all"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>{customTheme ? 'Change AI Word Pack' : 'Generate AI Theme Pack'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Word Hint & Timer Bar */}
       {phase !== 'LOBBY' && (
         <WordHintDisplay
           phase={phase}
@@ -192,6 +239,15 @@ export default function RoomPage() {
           timerStartMs={timerStartMs}
           timerDurationSec={timerDurationSec}
           onSelectWord={selectWord}
+        />
+      )}
+
+      {/* AI Theme Word Pack Modal */}
+      {showThemeModal && (
+        <AIWordPackModal
+          currentTheme={customTheme}
+          onGenerateTheme={generateWordPack}
+          onClose={() => setShowThemeModal(false)}
         />
       )}
 

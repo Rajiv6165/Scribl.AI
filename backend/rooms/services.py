@@ -5,6 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from .models import Room, Player, StrokeEvent, Round, Word
 from .word_bank import STARTER_WORDS
+from .ai_service import AIService
 
 
 class RoomService:
@@ -12,10 +13,11 @@ class RoomService:
     @staticmethod
     def seed_word_bank():
         """Ensure initial word bank is populated in DB."""
-        if Word.objects.count() < 50:
+        if Word.objects.filter(room=None).count() < 50:
             for item in STARTER_WORDS:
                 Word.objects.get_or_create(
                     word=item["word"],
+                    room=None,
                     defaults={
                         "difficulty": item["difficulty"],
                         "category": item["category"]
@@ -23,7 +25,7 @@ class RoomService:
                 )
 
     @staticmethod
-    def create_room(host_nickname: str, max_players: int = 10, total_rounds: int = 3) -> dict:
+    def create_room(host_nickname: str, max_players: int = 10, total_rounds: int = 3, smart_ai_enabled: bool = True) -> dict:
         """Create a new room and assign host player."""
         host_nickname = host_nickname.strip()
         if not host_nickname:
@@ -36,6 +38,7 @@ class RoomService:
                 host_name=host_nickname,
                 max_players=max_players,
                 total_rounds=total_rounds,
+                smart_ai_enabled=smart_ai_enabled,
                 phase=Room.PHASE_LOBBY
             )
             player = Player.objects.create(
@@ -43,8 +46,14 @@ class RoomService:
                 nickname=host_nickname,
                 session_id=f"host_{room.code}",
                 is_host=True,
-                is_connected=True
+                is_connected=True,
+                is_ai=False
             )
+
+            # Auto-add Scribl-Bot AI player if smart_ai_enabled is True
+            if smart_ai_enabled:
+                RoomService.add_ai_player_sync(room)
+
             return {
                 "room_code": room.code,
                 "host_nickname": host_nickname,
@@ -52,8 +61,77 @@ class RoomService:
                 "phase": room.phase,
                 "max_players": room.max_players,
                 "total_rounds": room.total_rounds,
+                "smart_ai_enabled": room.smart_ai_enabled,
+                "custom_theme": room.custom_theme,
                 "created_at": room.created_at.isoformat(),
             }
+
+    @staticmethod
+    def add_ai_player_sync(room: Room) -> Player:
+        """Add Scribl-Bot AI player to room."""
+        ai_player, _ = Player.objects.get_or_create(
+            room=room,
+            nickname="Scribl-Bot",
+            defaults={
+                "session_id": f"bot_{room.code}",
+                "is_host": False,
+                "is_connected": True,
+                "is_ai": True,
+            }
+        )
+        return ai_player
+
+    @staticmethod
+    def toggle_smart_ai(room_code: str, enabled: bool) -> dict:
+        """Toggle AI player in room."""
+        room = Room.objects.get(code=room_code.upper())
+        room.smart_ai_enabled = enabled
+        room.save(update_fields=['smart_ai_enabled'])
+
+        if enabled:
+            RoomService.add_ai_player_sync(room)
+        else:
+            Player.objects.filter(room=room, is_ai=True).delete()
+
+        return {
+            "room_code": room.code,
+            "smart_ai_enabled": room.smart_ai_enabled,
+            "players": RoomService.get_room_players_sync(room)
+        }
+
+    @staticmethod
+    def generate_and_apply_custom_word_pack(room_code: str, theme: str) -> dict:
+        """Generates custom AI themed word pack and attaches it to room session."""
+        room = Room.objects.get(code=room_code.upper())
+        theme_clean = theme.strip()
+
+        if not theme_clean:
+            raise ValueError("Theme cannot be empty.")
+
+        word_list = AIService.generate_theme_word_pack(theme_clean)
+
+        with transaction.atomic():
+            # Clear old custom words for this room
+            Word.objects.filter(room=room).delete()
+
+            # Create new custom words
+            for w in word_list:
+                Word.objects.create(
+                    word=w,
+                    room=room,
+                    difficulty='medium',
+                    category=theme_clean
+                )
+
+            room.custom_theme = theme_clean
+            room.save(update_fields=['custom_theme'])
+
+        return {
+            "room_code": room.code,
+            "custom_theme": room.custom_theme,
+            "word_count": len(word_list),
+            "words": word_list,
+        }
 
     @staticmethod
     def join_room(room_code: str, player_nickname: str, session_id: str) -> dict:
@@ -76,6 +154,7 @@ class RoomService:
                 'session_id': session_id,
                 'is_host': False,
                 'is_connected': True,
+                'is_ai': False,
             }
         )
 
@@ -93,6 +172,8 @@ class RoomService:
             "is_host": player.is_host,
             "status": room.phase,
             "phase": room.phase,
+            "smart_ai_enabled": room.smart_ai_enabled,
+            "custom_theme": room.custom_theme,
             "current_round_num": room.current_round_num,
             "total_rounds": room.total_rounds,
             "current_drawer": room.current_drawer_nickname,
@@ -108,7 +189,7 @@ class RoomService:
         try:
             room = Room.objects.get(code=room_code.upper())
             player = Player.objects.filter(room=room, nickname=player_nickname).first()
-            if player:
+            if player and not player.is_ai:
                 player.is_connected = False
                 player.save(update_fields=['is_connected'])
             players_list = RoomService.get_room_players_sync(room)
@@ -129,6 +210,7 @@ class RoomService:
                 "nickname": p.nickname,
                 "is_host": p.is_host,
                 "is_connected": p.is_connected,
+                "is_ai": p.is_ai,
                 "score": p.score,
                 "has_guessed": p.has_guessed,
             }
@@ -150,10 +232,8 @@ class RoomService:
         if not connected_players:
             raise ValueError("No connected players in room.")
 
-        # Shuffle player turn order for randomness
         random.shuffle(connected_players)
 
-        # Reset scores & flags
         Player.objects.filter(room=room).update(score=0, has_guessed=False, guess_order=0)
 
         room.turn_order = connected_players
@@ -184,17 +264,18 @@ class RoomService:
             'word_hint', 'timer_start_ms', 'timer_duration_sec', 'current_turn_index'
         ])
 
-        # Reset guessed flags for all players in room
         Player.objects.filter(room=room).update(has_guessed=False, guess_order=0)
-
-        # Clear canvas strokes for the new turn
         StrokeEvent.objects.filter(room=room).delete()
 
-        # Pick 3 random words for drawer
-        words = list(Word.objects.values_list('word', flat=True))
-        if len(words) < 3:
-            words = ["CAT", "HOUSE", "ELEPHANT"]
-        choices = random.sample(words, 3)
+        # Check for room-scoped custom theme words first
+        custom_words = list(Word.objects.filter(room=room).values_list('word', flat=True))
+        if len(custom_words) >= 3:
+            choices = random.sample(custom_words, 3)
+        else:
+            words = list(Word.objects.filter(room=None).values_list('word', flat=True))
+            if len(words) < 3:
+                words = ["CAT", "HOUSE", "ELEPHANT"]
+            choices = random.sample(words, 3)
 
         return {
             "room_code": room.code,
@@ -219,7 +300,6 @@ class RoomService:
         word_clean = chosen_word.upper().strip()
         room.current_word = word_clean
         
-        # Generate underscore hint e.g. "E _ _ L E" or "_ _ _ _ _"
         hint_chars = []
         for char in word_clean:
             if char.isalpha():
@@ -258,7 +338,6 @@ class RoomService:
         if not player:
             raise ValueError(f"Player {player_nickname} not found.")
 
-        # Drawer or already guessed players cannot submit guess
         if player_nickname.lower() == room.current_drawer_nickname.lower() or player.has_guessed:
             return {"is_correct": False, "reason": "Drawer or already guessed."}
 
@@ -266,31 +345,25 @@ class RoomService:
         target_word = room.current_word.upper().strip()
 
         if clean_text == target_word:
-            # Correct Guess!
             now_ms = int(time.time() * 1000)
             elapsed_sec = max(0, (now_ms - room.timer_start_ms) / 1000.0)
             time_left_sec = max(0.0, room.timer_duration_sec - elapsed_sec)
 
-            # Time-based point calculation: base (500) + time bonus (up to 500)
             time_ratio = time_left_sec / float(room.timer_duration_sec)
             guesser_pts = 500 + int(time_ratio * 500)
 
-            # Award guesser points
             player.score += guesser_pts
             player.has_guessed = True
             
-            # Calculate guess order count
             previous_guessers = Player.objects.filter(room=room, has_guessed=True).count()
             player.guess_order = previous_guessers + 1
             player.save(update_fields=['score', 'has_guessed', 'guess_order'])
 
-            # Award bonus points to current drawer (+100 per correct guesser)
             drawer = Player.objects.filter(room=room, nickname=room.current_drawer_nickname).first()
             if drawer:
                 drawer.score += 100
                 drawer.save(update_fields=['score'])
 
-            # Check if all active non-drawers have guessed correctly
             non_drawers = Player.objects.filter(room=room, is_connected=True).exclude(nickname=room.current_drawer_nickname)
             all_guessed = non_drawers.filter(has_guessed=False).count() == 0
 
@@ -304,6 +377,58 @@ class RoomService:
             }
 
         return {"is_correct": False, "text": text}
+
+    @staticmethod
+    def execute_ai_guess_attempt(room_code: str) -> dict:
+        """Executes a non-cheat AI guess attempt via Gemini Vision & Pillow rendering."""
+        try:
+            room = Room.objects.get(code=room_code.upper())
+            if not room.smart_ai_enabled or room.phase != Room.PHASE_DRAWING:
+                return {"executed": False, "reason": "AI disabled or not in drawing phase."}
+
+            bot = Player.objects.filter(room=room, is_ai=True, is_connected=True).first()
+            if not bot or bot.has_guessed or bot.nickname.lower() == room.current_drawer_nickname.lower():
+                return {"executed": False, "reason": "Bot drawing or already guessed."}
+
+            strokes = StrokeEvent.objects.filter(room=room).order_by('sequence_number')
+            if strokes.count() == 0:
+                return {"executed": False, "reason": "Empty canvas."}
+
+            stroke_data = [
+                {
+                    "action_type": s.action_type,
+                    "payload": s.payload
+                }
+                for s in strokes
+            ]
+
+            # Generate top 3 guess candidates using Gemini Vision & Pillow
+            guess_candidates = AIService.predict_drawing_guess(
+                stroke_events=stroke_data,
+                word_hint=room.word_hint
+            )
+
+            results = []
+            for candidate in guess_candidates:
+                # Pass guess through EXACT same submit_guess validation path
+                res = RoomService.submit_guess(room_code=room.code, player_nickname="Scribl-Bot", text=candidate)
+                results.append(res)
+                if res.get('is_correct'):
+                    return {
+                        "executed": True,
+                        "is_correct": True,
+                        "guessed_word": candidate,
+                        "submit_result": res,
+                    }
+
+            return {
+                "executed": True,
+                "is_correct": False,
+                "guesses_attempted": guess_candidates,
+            }
+        except Exception as err:
+            logger.error(f"Error in execute_ai_guess_attempt: {err}")
+            return {"executed": False, "error": str(err)}
 
     @staticmethod
     def end_round(room_code: str) -> dict:
@@ -335,12 +460,10 @@ class RoomService:
         next_turn_idx = room.current_turn_index + 1
 
         if next_turn_idx >= len(turn_order):
-            # All players drew in this round -> advance to next round
             next_turn_idx = 0
             room.current_round_num += 1
 
         if room.current_round_num > room.total_rounds:
-            # Game Completed!
             room.phase = Room.PHASE_GAME_END
             room.save(update_fields=['phase', 'current_round_num'])
             return {
@@ -432,10 +555,13 @@ class RoomService:
 async_create_room = database_sync_to_async(RoomService.create_room)
 async_join_room = database_sync_to_async(RoomService.join_room)
 async_leave_room = database_sync_to_async(RoomService.leave_room)
+async_toggle_smart_ai = database_sync_to_async(RoomService.toggle_smart_ai)
+async_generate_and_apply_custom_word_pack = database_sync_to_async(RoomService.generate_and_apply_custom_word_pack)
 async_start_game = database_sync_to_async(RoomService.start_game)
 async_start_word_selection = database_sync_to_async(RoomService.start_word_selection)
 async_select_word = database_sync_to_async(RoomService.select_word)
 async_submit_guess = database_sync_to_async(RoomService.submit_guess)
+async_execute_ai_guess_attempt = database_sync_to_async(RoomService.execute_ai_guess_attempt)
 async_end_round = database_sync_to_async(RoomService.end_round)
 async_next_turn = database_sync_to_async(RoomService.next_turn)
 async_record_stroke_event = database_sync_to_async(RoomService.record_stroke_event)

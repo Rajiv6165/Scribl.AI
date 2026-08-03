@@ -26,6 +26,7 @@ export interface Player {
   nickname: string;
   is_host: boolean;
   is_connected: boolean;
+  is_ai?: boolean;
   score: number;
   has_guessed: boolean;
 }
@@ -55,6 +56,8 @@ export interface RoomStateMessage {
   nickname: string;
   is_host: boolean;
   phase: GamePhase;
+  smart_ai_enabled: boolean;
+  custom_theme: string;
   current_round_num: number;
   total_rounds: number;
   current_drawer: string;
@@ -69,6 +72,8 @@ export interface GamePhaseChangeMessage {
   type: 'game_phase_change';
   room_code: string;
   phase: GamePhase;
+  smart_ai_enabled: boolean;
+  custom_theme: string;
   current_round_num: number;
   total_rounds: number;
   current_drawer: string;

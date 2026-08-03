@@ -65,6 +65,11 @@ export const PlayerList: React.FC<PlayerListProps> = ({ players, currentNickname
                   <div className="flex flex-col">
                     <span className="text-sm font-semibold flex items-center gap-1.5">
                       {player.nickname}
+                      {player.is_ai && (
+                        <span className="text-[10px] bg-purple-500/30 text-purple-300 border border-purple-400/40 px-1.5 py-0.5 rounded font-mono font-bold flex items-center gap-0.5">
+                          BOT
+                        </span>
+                      )}
                       {isMe && (
                         <span className="text-[10px] bg-brand-500/30 text-brand-300 px-1.5 py-0.5 rounded font-mono">
                           You

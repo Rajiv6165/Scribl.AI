@@ -78,6 +78,11 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
                 <div className="flex flex-col">
                   <span className="text-xs font-bold flex items-center gap-1.5">
                     {player.nickname}
+                    {player.is_ai && (
+                      <span className="text-[9px] bg-purple-500/30 text-purple-300 border border-purple-400/40 px-1 py-0.2 rounded font-mono font-bold">
+                        BOT
+                      </span>
+                    )}
                     {player.is_host && <Crown className="w-3 h-3 text-amber-400" />}
                   </span>
                   <span className="text-[11px] font-extrabold text-brand-400">
