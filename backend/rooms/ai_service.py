@@ -27,7 +27,6 @@ class AIService:
                 continue
 
             if action_type == 'undo':
-                # Simplified undo: full history replay is handled by caller passing clean history
                 continue
 
             if action_type == 'stroke':
@@ -60,8 +59,6 @@ class AIService:
             return []
 
         api_key = os.environ.get('GEMINI_API_KEY', '').strip()
-
-        # Render stroke history to PNG image bytes
         image_bytes = AIService.render_strokes_to_image(stroke_events)
 
         if not api_key:
@@ -100,8 +97,80 @@ class AIService:
         return []
 
     @staticmethod
+    def generate_drawing_roast(stroke_events: list, revealed_word: str) -> str:
+        """Generates a short, PG-rated, good-natured AI roast/critique of the drawing."""
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+        
+        fallback_roasts = [
+            f"A bold, avant-garde rendition of '{revealed_word}'! It definitely has strong abstract energy.",
+            f"Minimalist, expressive, and truly unforgettable! Is that a '{revealed_word}' or modern art?",
+            f"The artist clearly has a unique vision for '{revealed_word}'. Monet would be intrigued!",
+            f"Captures the essence of '{revealed_word}' with pure artistic bravery!"
+        ]
+
+        if not api_key or not stroke_events:
+            return random.choice(fallback_roasts)
+
+        try:
+            image_bytes = AIService.render_strokes_to_image(stroke_events)
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+
+            prompt = (
+                f"You are a hilarious, friendly AI game master in a drawing game. "
+                f"Examine this canvas drawing which was supposed to be '{revealed_word}'. "
+                f"Provide a short, funny, PG-rated, good-natured 2-sentence roast/critique of the drawing. "
+                f"Keep it light, kind-spirited, and appropriate for all ages — no mean or harmful put-downs."
+            )
+
+            pil_image = Image.open(io.BytesIO(image_bytes))
+            response = model.generate_content([prompt, pil_image])
+
+            if response and response.text:
+                return response.text.strip()
+
+        except Exception as err:
+            logger.error(f"Failed to generate AI drawing roast via Gemini: {err}")
+
+        return random.choice(fallback_roasts)
+
+    @staticmethod
+    def generate_match_highlight_recap(revealed_word: str, drawer_nickname: str) -> str:
+        """Generates a short, fun AI match highlight card for the final game over results screen."""
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+
+        fallback_recaps = [
+            f"🎨 Match Highlight: Picasso of the match award goes to {drawer_nickname} for their iconic '{revealed_word}'!",
+            f"✨ Match Highlight: Most creative interpretation goes to {drawer_nickname}'s drawing of '{revealed_word}'!",
+            f"🏆 Match Highlight: {drawer_nickname} stole the spotlight with their unforgettable '{revealed_word}' drawing!"
+        ]
+
+        if not api_key:
+            return random.choice(fallback_recaps)
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+
+            prompt = (
+                f"Write a short 2-sentence fun AI Match Highlight recap for a drawing game. "
+                f"Award {drawer_nickname} a funny, lighthearted trophy title for their drawing of '{revealed_word}'. "
+                f"Keep it positive, PG-rated, and humorous."
+            )
+
+            response = model.generate_content(prompt)
+            if response and response.text:
+                return response.text.strip()
+
+        except Exception as err:
+            logger.error(f"Failed to generate match highlight recap via Gemini: {err}")
+
+        return random.choice(fallback_recaps)
+
+    @staticmethod
     def _fallback_heuristic_guesses(word_hint: str) -> list:
-        """Resilient fallback when Gemini API key is unconfigured or rate limited."""
         hint_clean = word_hint.replace(' ', '')
         length = len(hint_clean) if hint_clean else 5
 
@@ -118,7 +187,6 @@ class AIService:
 
     @staticmethod
     def calculate_ai_guess_delay(room) -> int:
-        """Adapts AI guess delay dynamically based on human player performance in current round."""
         from .models import Player
 
         human_players = Player.objects.filter(room=room, is_ai=False, is_connected=True)
@@ -128,22 +196,17 @@ class AIService:
         if total_humans == 0:
             return 8
 
-        # Ratio of human players who have guessed
         ratio = guessed_humans / float(total_humans)
 
         if ratio == 0:
-            # Humans are struggling / haven't guessed yet -> AI delays 14-20 seconds
             return random.randint(14, 20)
         elif ratio < 0.5:
-            # Moderate speed -> AI delays 10-14 seconds
             return random.randint(10, 14)
         else:
-            # Humans are fast / dominating -> AI responds quicker 6-9 seconds
             return random.randint(6, 9)
 
     @staticmethod
     def generate_theme_word_pack(theme: str) -> list:
-        """Generates ~30 themed drawing words using LLM with regex validation & fallback."""
         theme_clean = theme.strip()
         if not theme_clean:
             return []
@@ -178,7 +241,6 @@ class AIService:
             except Exception as err:
                 logger.error(f"Failed to generate theme word pack via Gemini: {err}")
 
-        # Fallback theme word pack generator
         theme_upper = theme_clean.upper()
         if "BOLLYWOOD" in theme_upper or "MOVIE" in theme_upper:
             return ["SHOLAY", "DANGAL", "DDLJ", "LAGAAN", "KABIR", "BAHUBALI", "AVATAR", "TITANIC", "JOKER", "INCEPTION", "GLADIATOR", "MATRIX"]
@@ -187,5 +249,4 @@ class AIService:
         elif "SUPERHERO" in theme_upper or "MARVEL" in theme_upper:
             return ["BATMAN", "SPIDERMAN", "THOR", "IRONMAN", "HULK", "SUPERMAN", "SHIELD", "CAPE", "MASK", "HAMMER", "PORTAL", "MUTANT"]
 
-        # Default themed fallback list
         return [f"{theme_clean.upper()}_{i}" for i in range(1, 15)]

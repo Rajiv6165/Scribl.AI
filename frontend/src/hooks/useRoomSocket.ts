@@ -29,10 +29,13 @@ export function useRoomSocket({
   const [players, setPlayers] = useState<Player[]>([]);
   const [isHost, setIsHost] = useState(false);
 
-  // Game Loop & AI State
+  // Game Loop, AI, & Roast State
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
   const [smartAIEnabled, setSmartAIEnabled] = useState<boolean>(true);
+  const [roastModeEnabled, setRoastModeEnabled] = useState<boolean>(true);
   const [customTheme, setCustomTheme] = useState<string>('');
+  const [drawingRoast, setDrawingRoast] = useState<string>('');
+  const [matchRecap, setMatchRecap] = useState<string>('');
   const [currentRoundNum, setCurrentRoundNum] = useState<number>(0);
   const [totalRounds, setTotalRounds] = useState<number>(3);
   const [currentDrawer, setCurrentDrawer] = useState<string>('');
@@ -74,6 +77,7 @@ export function useRoomSocket({
             setIsHost(data.is_host);
             setPhase(data.phase || 'LOBBY');
             setSmartAIEnabled(data.smart_ai_enabled ?? true);
+            setRoastModeEnabled(data.roast_mode_enabled ?? true);
             setCustomTheme(data.custom_theme || '');
             setCurrentRoundNum(data.current_round_num || 0);
             setTotalRounds(data.total_rounds || 3);
@@ -91,6 +95,9 @@ export function useRoomSocket({
             setPhase(data.phase);
             if (data.smart_ai_enabled !== undefined) {
               setSmartAIEnabled(data.smart_ai_enabled);
+            }
+            if (data.roast_mode_enabled !== undefined) {
+              setRoastModeEnabled(data.roast_mode_enabled);
             }
             if (data.custom_theme !== undefined) {
               setCustomTheme(data.custom_theme);
@@ -117,10 +124,19 @@ export function useRoomSocket({
             }
 
             if (data.phase === 'WORD_SELECT') {
+              setDrawingRoast('');
               if (onStateSynced) {
                 onStateSynced([]);
               }
             }
+            break;
+
+          case 'drawing_roast':
+            setDrawingRoast(data.roast);
+            break;
+
+          case 'match_recap':
+            setMatchRecap(data.recap);
             break;
 
           case 'chat_message':
@@ -202,6 +218,18 @@ export function useRoomSocket({
       socketRef.current.send(
         JSON.stringify({
           type: 'toggle_ai',
+          nickname,
+          enabled,
+        })
+      );
+    }
+  }, [nickname]);
+
+  const toggleRoastMode = useCallback((enabled: boolean) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'toggle_roast_mode',
           nickname,
           enabled,
         })
@@ -308,7 +336,10 @@ export function useRoomSocket({
     isHost,
     phase,
     smartAIEnabled,
+    roastModeEnabled,
     customTheme,
+    drawingRoast,
+    matchRecap,
     currentRoundNum,
     totalRounds,
     currentDrawer,
@@ -319,6 +350,7 @@ export function useRoomSocket({
     timerDurationSec,
     chatMessages,
     toggleAI,
+    toggleRoastMode,
     generateWordPack,
     startGame,
     selectWord,

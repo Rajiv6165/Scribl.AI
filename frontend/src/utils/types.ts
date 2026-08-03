@@ -44,6 +44,8 @@ export type WSMessageType =
   | 'player_joined'
   | 'player_left'
   | 'game_phase_change'
+  | 'drawing_roast'
+  | 'match_recap'
   | 'chat_message'
   | 'correct_guess'
   | 'draw_stroke'
@@ -57,6 +59,7 @@ export interface RoomStateMessage {
   is_host: boolean;
   phase: GamePhase;
   smart_ai_enabled: boolean;
+  roast_mode_enabled: boolean;
   custom_theme: string;
   current_round_num: number;
   total_rounds: number;
@@ -73,6 +76,7 @@ export interface GamePhaseChangeMessage {
   room_code: string;
   phase: GamePhase;
   smart_ai_enabled: boolean;
+  roast_mode_enabled: boolean;
   custom_theme: string;
   current_round_num: number;
   total_rounds: number;
@@ -83,6 +87,16 @@ export interface GamePhaseChangeMessage {
   timer_start_ms: number;
   timer_duration_sec: number;
   players: Player[];
+}
+
+export interface DrawingRoastEvent {
+  type: 'drawing_roast';
+  roast: string;
+}
+
+export interface MatchRecapEvent {
+  type: 'match_recap';
+  recap: string;
 }
 
 export interface ChatMessageEvent {
@@ -133,6 +147,8 @@ export interface UndoStrokeMessage {
 export type IncomingWSMessage =
   | RoomStateMessage
   | GamePhaseChangeMessage
+  | DrawingRoastEvent
+  | MatchRecapEvent
   | ChatMessageEvent
   | CorrectGuessEvent
   | PlayerJoinedMessage

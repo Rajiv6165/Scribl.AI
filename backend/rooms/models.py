@@ -31,6 +31,7 @@ class Room(models.Model):
     phase = models.CharField(max_length=20, choices=PHASE_CHOICES, default=PHASE_LOBBY)
     
     smart_ai_enabled = models.BooleanField(default=True)
+    roast_mode_enabled = models.BooleanField(default=True)
     custom_theme = models.CharField(max_length=100, blank=True, default='')
 
     current_drawer_nickname = models.CharField(max_length=50, blank=True, default='')
@@ -47,7 +48,7 @@ class Room(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Room {self.code} ({self.phase} - AI:{self.smart_ai_enabled})"
+        return f"Room {self.code} ({self.phase} - AI:{self.smart_ai_enabled} Roast:{self.roast_mode_enabled})"
 
 
 class Player(models.Model):

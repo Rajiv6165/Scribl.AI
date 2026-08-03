@@ -25,7 +25,7 @@ class RoomService:
                 )
 
     @staticmethod
-    def create_room(host_nickname: str, max_players: int = 10, total_rounds: int = 3, smart_ai_enabled: bool = True) -> dict:
+    def create_room(host_nickname: str, max_players: int = 10, total_rounds: int = 3, smart_ai_enabled: bool = True, roast_mode_enabled: bool = True) -> dict:
         """Create a new room and assign host player."""
         host_nickname = host_nickname.strip()
         if not host_nickname:
@@ -39,6 +39,7 @@ class RoomService:
                 max_players=max_players,
                 total_rounds=total_rounds,
                 smart_ai_enabled=smart_ai_enabled,
+                roast_mode_enabled=roast_mode_enabled,
                 phase=Room.PHASE_LOBBY
             )
             player = Player.objects.create(
@@ -50,7 +51,6 @@ class RoomService:
                 is_ai=False
             )
 
-            # Auto-add Scribl-Bot AI player if smart_ai_enabled is True
             if smart_ai_enabled:
                 RoomService.add_ai_player_sync(room)
 
@@ -62,6 +62,7 @@ class RoomService:
                 "max_players": room.max_players,
                 "total_rounds": room.total_rounds,
                 "smart_ai_enabled": room.smart_ai_enabled,
+                "roast_mode_enabled": room.roast_mode_enabled,
                 "custom_theme": room.custom_theme,
                 "created_at": room.created_at.isoformat(),
             }
@@ -100,6 +101,17 @@ class RoomService:
         }
 
     @staticmethod
+    def toggle_roast_mode(room_code: str, enabled: bool) -> dict:
+        """Toggle AI Roast Mode in room."""
+        room = Room.objects.get(code=room_code.upper())
+        room.roast_mode_enabled = enabled
+        room.save(update_fields=['roast_mode_enabled'])
+        return {
+            "room_code": room.code,
+            "roast_mode_enabled": room.roast_mode_enabled,
+        }
+
+    @staticmethod
     def generate_and_apply_custom_word_pack(room_code: str, theme: str) -> dict:
         """Generates custom AI themed word pack and attaches it to room session."""
         room = Room.objects.get(code=room_code.upper())
@@ -111,10 +123,8 @@ class RoomService:
         word_list = AIService.generate_theme_word_pack(theme_clean)
 
         with transaction.atomic():
-            # Clear old custom words for this room
             Word.objects.filter(room=room).delete()
 
-            # Create new custom words
             for w in word_list:
                 Word.objects.create(
                     word=w,
@@ -173,6 +183,7 @@ class RoomService:
             "status": room.phase,
             "phase": room.phase,
             "smart_ai_enabled": room.smart_ai_enabled,
+            "roast_mode_enabled": room.roast_mode_enabled,
             "custom_theme": room.custom_theme,
             "current_round_num": room.current_round_num,
             "total_rounds": room.total_rounds,
@@ -267,7 +278,6 @@ class RoomService:
         Player.objects.filter(room=room).update(has_guessed=False, guess_order=0)
         StrokeEvent.objects.filter(room=room).delete()
 
-        # Check for room-scoped custom theme words first
         custom_words = list(Word.objects.filter(room=room).values_list('word', flat=True))
         if len(custom_words) >= 3:
             choices = random.sample(custom_words, 3)
@@ -402,7 +412,6 @@ class RoomService:
                 for s in strokes
             ]
 
-            # Generate top 3 guess candidates using Gemini Vision & Pillow
             guess_candidates = AIService.predict_drawing_guess(
                 stroke_events=stroke_data,
                 word_hint=room.word_hint
@@ -410,7 +419,6 @@ class RoomService:
 
             results = []
             for candidate in guess_candidates:
-                # Pass guess through EXACT same submit_guess validation path
                 res = RoomService.submit_guess(room_code=room.code, player_nickname="Scribl-Bot", text=candidate)
                 results.append(res)
                 if res.get('is_correct'):
@@ -427,8 +435,39 @@ class RoomService:
                 "guesses_attempted": guess_candidates,
             }
         except Exception as err:
-            logger.error(f"Error in execute_ai_guess_attempt: {err}")
             return {"executed": False, "error": str(err)}
+
+    @staticmethod
+    def generate_round_roast(room_code: str) -> dict:
+        """Generates AI drawing roast asynchronously for round end summary."""
+        try:
+            room = Room.objects.get(code=room_code.upper())
+            if not room.roast_mode_enabled:
+                return {"roast": ""}
+
+            strokes = StrokeEvent.objects.filter(room=room).order_by('sequence_number')
+            stroke_data = [{"action_type": s.action_type, "payload": s.payload} for s in strokes]
+
+            roast_text = AIService.generate_drawing_roast(
+                stroke_events=stroke_data,
+                revealed_word=room.current_word
+            )
+            return {"room_code": room.code, "roast": roast_text, "drawer": room.current_drawer_nickname}
+        except Exception as err:
+            return {"room_code": room_code, "roast": "A bold minimalist creation!", "error": str(err)}
+
+    @staticmethod
+    def generate_match_recap(room_code: str) -> dict:
+        """Generates AI match highlight recap for game end results screen."""
+        try:
+            room = Room.objects.get(code=room_code.upper())
+            recap_text = AIService.generate_match_highlight_recap(
+                revealed_word=room.current_word or "Creative Masterpiece",
+                drawer_nickname=room.current_drawer_nickname or "Top Artist"
+            )
+            return {"room_code": room.code, "recap": recap_text}
+        except Exception as err:
+            return {"room_code": room_code, "recap": "Match Highlight: Outstanding creativity across all rounds!", "error": str(err)}
 
     @staticmethod
     def end_round(room_code: str) -> dict:
@@ -444,6 +483,7 @@ class RoomService:
         return {
             "room_code": room.code,
             "phase": room.phase,
+            "roast_mode_enabled": room.roast_mode_enabled,
             "revealed_word": room.current_word,
             "current_drawer": room.current_drawer_nickname,
             "timer_start_ms": room.timer_start_ms,
@@ -556,12 +596,15 @@ async_create_room = database_sync_to_async(RoomService.create_room)
 async_join_room = database_sync_to_async(RoomService.join_room)
 async_leave_room = database_sync_to_async(RoomService.leave_room)
 async_toggle_smart_ai = database_sync_to_async(RoomService.toggle_smart_ai)
+async_toggle_roast_mode = database_sync_to_async(RoomService.toggle_roast_mode)
 async_generate_and_apply_custom_word_pack = database_sync_to_async(RoomService.generate_and_apply_custom_word_pack)
 async_start_game = database_sync_to_async(RoomService.start_game)
 async_start_word_selection = database_sync_to_async(RoomService.start_word_selection)
 async_select_word = database_sync_to_async(RoomService.select_word)
 async_submit_guess = database_sync_to_async(RoomService.submit_guess)
 async_execute_ai_guess_attempt = database_sync_to_async(RoomService.execute_ai_guess_attempt)
+async_generate_round_roast = database_sync_to_async(RoomService.generate_round_roast)
+async_generate_match_recap = database_sync_to_async(RoomService.generate_match_recap)
 async_end_round = database_sync_to_async(RoomService.end_round)
 async_next_turn = database_sync_to_async(RoomService.next_turn)
 async_record_stroke_event = database_sync_to_async(RoomService.record_stroke_event)

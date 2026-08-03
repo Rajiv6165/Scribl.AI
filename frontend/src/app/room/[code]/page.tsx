@@ -13,7 +13,7 @@ import { RoundEndModal } from '../../../components/RoundEndModal';
 import { AIWordPackModal } from '../../../components/AIWordPackModal';
 import { RoomHeader } from '../../../components/RoomHeader';
 import { StrokePayload, StrokeEventData } from '../../../utils/types';
-import { Bot, Wand2 } from 'lucide-react';
+import { Bot, Wand2, Flame } from 'lucide-react';
 
 export default function RoomPage() {
   const params = useParams();
@@ -64,7 +64,10 @@ export default function RoomPage() {
     isHost,
     phase,
     smartAIEnabled,
+    roastModeEnabled,
     customTheme,
+    drawingRoast,
+    matchRecap,
     currentRoundNum,
     totalRounds,
     currentDrawer,
@@ -75,6 +78,7 @@ export default function RoomPage() {
     timerDurationSec,
     chatMessages,
     toggleAI,
+    toggleRoastMode,
     generateWordPack,
     startGame,
     selectWord,
@@ -126,22 +130,42 @@ export default function RoomPage() {
       {/* Host AI & Custom Theme Toolbar (Visible in LOBBY for Host) */}
       {phase === 'LOBBY' && isHost && (
         <div className="glass-panel px-4 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-3 border border-purple-500/30">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-              <Bot className="w-4 h-4 text-purple-400" />
-              <span>Smart AI Bot:</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => toggleAI(!smartAIEnabled)}
-              className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
-                smartAIEnabled
-                  ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
-                  : 'bg-slate-800 text-slate-400 border border-slate-700'
-              }`}
-            >
-              {smartAIEnabled ? 'ENABLED' : 'DISABLED'}
-            </button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Bot className="w-4 h-4 text-purple-400" />
+                <span>Smart AI Bot:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleAI(!smartAIEnabled)}
+                className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
+                  smartAIEnabled
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                }`}
+              >
+                {smartAIEnabled ? 'ENABLED' : 'DISABLED'}
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-rose-400" />
+                <span>AI Roast Mode:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => toggleRoastMode(!roastModeEnabled)}
+                className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
+                  roastModeEnabled
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-500/30'
+                    : 'bg-slate-800 text-slate-400 border border-slate-700'
+                }`}
+              >
+                {roastModeEnabled ? 'ENABLED' : 'DISABLED'}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -256,6 +280,8 @@ export default function RoomPage() {
         <RoundEndModal
           phase={phase}
           revealedWord={revealedWord}
+          drawingRoast={drawingRoast}
+          matchRecap={matchRecap}
           players={players}
           timerStartMs={timerStartMs}
           timerDurationSec={timerDurationSec}

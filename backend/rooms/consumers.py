@@ -5,12 +5,15 @@ from .services import (
     async_join_room,
     async_leave_room,
     async_toggle_smart_ai,
+    async_toggle_roast_mode,
     async_generate_and_apply_custom_word_pack,
     async_start_game,
     async_start_word_selection,
     async_select_word,
     async_submit_guess,
     async_execute_ai_guess_attempt,
+    async_generate_round_roast,
+    async_generate_match_recap,
     async_end_round,
     async_next_turn,
     async_record_stroke_event,
@@ -26,7 +29,6 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         self.room_code = None
         self.room_group_name = None
         self.nickname = None
-        self.ai_task = None
 
     async def connect(self):
         self.room_code = self.scope['url_route']['kwargs']['room_code'].upper()
@@ -68,6 +70,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.handle_join_room(content)
         elif action_type == 'toggle_ai':
             await self.handle_toggle_ai(content)
+        elif action_type == 'toggle_roast_mode':
+            await self.handle_toggle_roast_mode(content)
         elif action_type == 'generate_word_pack':
             await self.handle_generate_word_pack(content)
         elif action_type == 'start_game':
@@ -101,6 +105,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             'is_host': join_data.get('is_host', False),
             'phase': join_data.get('phase', 'LOBBY'),
             'smart_ai_enabled': join_data.get('smart_ai_enabled', True),
+            'roast_mode_enabled': join_data.get('roast_mode_enabled', True),
             'custom_theme': join_data.get('custom_theme', ''),
             'current_round_num': join_data.get('current_round_num', 0),
             'total_rounds': join_data.get('total_rounds', 3),
@@ -140,6 +145,20 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'type': 'chat_message_event',
                 'nickname': 'System',
                 'text': f"🤖 Smart AI Bot {'enabled' if enabled else 'disabled'}.",
+                'is_system': True,
+            }
+        )
+
+    async def handle_toggle_roast_mode(self, content):
+        enabled = content.get('enabled', True)
+        result = await async_toggle_roast_mode(self.room_code, enabled)
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                'type': 'chat_message_event',
+                'nickname': 'System',
+                'text': f"🔥 AI Roast Mode {'enabled' if enabled else 'disabled'}.",
                 'is_system': True,
             }
         )
@@ -210,6 +229,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             if result.get('all_guessed'):
                 end_res = await async_end_round(self.room_code)
                 await self.broadcast_phase_update(end_res)
+                # Trigger async AI roast task
+                asyncio.create_task(self.trigger_background_roast())
 
         else:
             await self.channel_layer.group_send(
@@ -233,9 +254,44 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         elif phase == 'DRAWING':
             end_res = await async_end_round(self.room_code)
             await self.broadcast_phase_update(end_res)
+            # Trigger async AI roast task
+            asyncio.create_task(self.trigger_background_roast())
         elif phase == 'ROUND_END':
             next_res = await async_next_turn(self.room_code)
             await self.broadcast_phase_update(next_res)
+            if next_res.get('phase') == 'GAME_END':
+                # Trigger async AI match recap task
+                asyncio.create_task(self.trigger_background_match_recap())
+
+    async def trigger_background_roast(self):
+        """Generates AI roast asynchronously without blocking round end screen."""
+        try:
+            roast_data = await async_generate_round_roast(self.room_code)
+            if roast_data.get('roast'):
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'drawing_roast_event',
+                        'roast': roast_data['roast'],
+                    }
+                )
+        except Exception as err:
+            logger.error(f"Error generating AI roast: {err}")
+
+    async def trigger_background_match_recap(self):
+        """Generates AI match highlight recap asynchronously without blocking final results screen."""
+        try:
+            recap_data = await async_generate_match_recap(self.room_code)
+            if recap_data.get('recap'):
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'match_recap_event',
+                        'recap': recap_data['recap'],
+                    }
+                )
+        except Exception as err:
+            logger.error(f"Error generating match recap: {err}")
 
     async def broadcast_phase_update(self, phase_data):
         await self.channel_layer.group_send(
@@ -267,11 +323,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             }
         )
 
-        # Trigger background AI guess attempt silently
         asyncio.create_task(self.trigger_background_ai_guess())
 
     async def trigger_background_ai_guess(self):
-        """Asynchronously attempts an AI player guess without blocking WS draw messages."""
         try:
             ai_res = await async_execute_ai_guess_attempt(self.room_code)
             if ai_res.get('executed') and ai_res.get('is_correct'):
@@ -302,6 +356,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 if sub_res.get('all_guessed'):
                     end_res = await async_end_round(self.room_code)
                     await self.broadcast_phase_update(end_res)
+                    asyncio.create_task(self.trigger_background_roast())
 
         except Exception as err:
             logger.error(f"Background AI guess error: {err}")
@@ -355,6 +410,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             'type': 'game_phase_change',
             **phase_data
+        })
+
+    async def drawing_roast_event(self, event):
+        await self.send_json({
+            'type': 'drawing_roast',
+            'roast': event['roast'],
+        })
+
+    async def match_recap_event(self, event):
+        await self.send_json({
+            'type': 'match_recap',
+            'recap': event['recap'],
         })
 
     async def chat_message_event(self, event):

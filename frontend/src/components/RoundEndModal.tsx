@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Trophy, Sparkles, Clock } from 'lucide-react';
+import { Trophy, Sparkles, Clock, Bot, Flame } from 'lucide-react';
 import { Player, GamePhase } from '../utils/types';
 
 interface RoundEndModalProps {
   phase: GamePhase;
   revealedWord: string;
+  drawingRoast?: string;
+  matchRecap?: string;
   players: Player[];
   timerStartMs: number;
   timerDurationSec: number;
@@ -15,6 +17,8 @@ interface RoundEndModalProps {
 export const RoundEndModal: React.FC<RoundEndModalProps> = ({
   phase,
   revealedWord,
+  drawingRoast,
+  matchRecap,
   players,
   timerStartMs,
   timerDurationSec,
@@ -52,10 +56,21 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
             </div>
 
             <h2 className="text-3xl font-extrabold text-white mb-1">Game Over!</h2>
-            <p className="text-slate-400 text-sm mb-6">
+            <p className="text-slate-400 text-sm mb-4">
               🎉 <strong className="text-amber-300">{winner?.nickname || 'Player'}</strong> wins the game with{' '}
               <strong className="text-white">{winner?.score || 0} pts</strong>!
             </p>
+
+            {/* AI Match Highlight Card */}
+            {matchRecap && (
+              <div className="bg-gradient-to-r from-amber-950/60 to-purple-950/60 p-4 rounded-2xl border border-amber-500/40 mb-6 text-left animate-in fade-in">
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <h4 className="text-xs font-bold text-amber-300 uppercase tracking-wider">AI Match Highlight</h4>
+                </div>
+                <p className="text-xs text-slate-200 italic leading-relaxed">{matchRecap}</p>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -65,15 +80,29 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
 
             <h2 className="text-2xl font-extrabold text-white mb-1">Round Ended!</h2>
             <p className="text-slate-400 text-sm mb-2">The secret word was:</p>
-            <div className="inline-block bg-brand-950/80 px-6 py-2 rounded-2xl border border-brand-500/40 text-2xl font-black text-amber-300 tracking-widest font-mono uppercase mb-6 shadow-inner">
+            <div className="inline-block bg-brand-950/80 px-6 py-2 rounded-2xl border border-brand-500/40 text-2xl font-black text-amber-300 tracking-widest font-mono uppercase mb-4 shadow-inner">
               {revealedWord || '---'}
             </div>
+
+            {/* AI Post-Round Roast Card */}
+            {drawingRoast && (
+              <div className="bg-purple-950/60 p-4 rounded-2xl border border-purple-500/40 mb-6 text-left animate-in fade-in">
+                <div className="flex items-center gap-2 mb-1">
+                  <Flame className="w-4 h-4 text-rose-400" />
+                  <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1">
+                    <Bot className="w-3.5 h-3.5" />
+                    AI Drawing Roast
+                  </h4>
+                </div>
+                <p className="text-xs text-purple-100 italic leading-relaxed">"{drawingRoast}"</p>
+              </div>
+            )}
           </>
         )}
 
         {/* Current Leaderboard Standings */}
-        <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800 mb-6 text-left max-h-48 overflow-y-auto">
-          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Current Standings</h4>
+        <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800 mb-6 text-left max-h-40 overflow-y-auto">
+          <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Final Standings</h4>
           <div className="space-y-2">
             {sortedPlayers.map((player, idx) => (
               <div

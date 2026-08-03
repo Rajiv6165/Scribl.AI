@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, MessageSquare, CheckCircle2 } from 'lucide-react';
+import { Send, MessageSquare, CheckCircle2, Mic, MicOff, AlertCircle } from 'lucide-react';
 import { ChatMessage } from '../utils/types';
+import { useVoiceRecognition } from '../hooks/useVoiceRecognition';
 
 interface ChatPanelProps {
   chatMessages: ChatMessage[];
@@ -22,6 +23,23 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const [text, setText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
+  const handleVoiceResult = (spokenText: string) => {
+    if (spokenText && !isDrawer && !hasGuessed) {
+      onSendGuess(spokenText);
+    }
+  };
+
+  const {
+    isSupported,
+    isListening,
+    transcript,
+    error: voiceError,
+    startListening,
+    stopListening,
+  } = useVoiceRecognition({
+    onSpeechResult: handleVoiceResult,
+  });
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
@@ -31,6 +49,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     if (!text.trim() || isDrawer || hasGuessed) return;
     onSendGuess(text.trim());
     setText('');
+  };
+
+  const toggleMic = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
   };
 
   const isDisabled = isDrawer || hasGuessed;
@@ -43,13 +69,47 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           <MessageSquare className="w-4 h-4 text-brand-400" />
           <span>Live Chat & Guesses</span>
         </h3>
+        
+        {/* Voice Guessing Mic Button */}
+        {isSupported && (
+          <button
+            type="button"
+            disabled={isDisabled}
+            onClick={toggleMic}
+            className={`p-1.5 rounded-xl flex items-center gap-1 text-xs font-bold transition-all ${
+              isListening
+                ? 'bg-rose-600 text-white shadow-lg shadow-rose-500/40 animate-pulse'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            } disabled:opacity-40 disabled:cursor-not-allowed`}
+            title={isListening ? 'Stop Voice Recording' : 'Voice Guessing (Web Speech API)'}
+          >
+            {isListening ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5 text-slate-400" />}
+            <span>{isListening ? 'Listening' : 'Voice'}</span>
+          </button>
+        )}
       </div>
+
+      {/* Voice Error Alert */}
+      {voiceError && (
+        <div className="p-2 rounded-xl bg-rose-950/60 border border-rose-800/60 text-rose-300 text-[11px] font-semibold flex items-center gap-1.5 animate-in fade-in">
+          <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+          <span>{voiceError}</span>
+        </div>
+      )}
+
+      {/* Voice Transcript Live Banner */}
+      {isListening && (
+        <div className="p-2 rounded-xl bg-purple-950/60 border border-purple-800/60 text-purple-300 text-[11px] font-semibold flex items-center gap-2 animate-pulse">
+          <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+          <span>Listening: "{transcript || 'Speak your guess now...'}"</span>
+        </div>
+      )}
 
       {/* Messages Scroll View */}
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px]">
         {chatMessages.length === 0 ? (
           <p className="text-xs text-slate-500 italic py-4 text-center">
-            Type your guess below when drawing starts!
+            Type or speak your guess below when drawing starts!
           </p>
         ) : (
           chatMessages.map((msg) => {
@@ -97,7 +157,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
               ? 'You are drawing! Cannot guess.'
               : hasGuessed
               ? 'You guessed correctly!'
-              : 'Type your guess here...'
+              : 'Type or speak your guess...'
           }
           className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder-slate-500 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
         />

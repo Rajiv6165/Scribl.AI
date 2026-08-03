@@ -9,6 +9,60 @@ from .services import RoomService
 from .ai_service import AIService
 
 
+class RoomServicePhase4Test(TestCase):
+    def setUp(self):
+        RoomService.seed_word_bank()
+
+    def test_toggle_roast_mode(self):
+        create_res = RoomService.create_room(host_nickname="Alice", roast_mode_enabled=True)
+        code = create_res["room_code"]
+
+        off_res = RoomService.toggle_roast_mode(code, False)
+        self.assertFalse(off_res["roast_mode_enabled"])
+
+        on_res = RoomService.toggle_roast_mode(code, True)
+        self.assertTrue(on_res["roast_mode_enabled"])
+
+    def test_drawing_roast_generation_and_fallback(self):
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+        RoomService.record_stroke_event(code, "Alice", "stroke", {"points": [{"x": 10, "y": 20}]})
+
+        # Test fallback when API key is unconfigured
+        roast = AIService.generate_drawing_roast([], "ELEPHANT")
+        self.assertIsInstance(roast, str)
+        self.assertGreater(len(roast), 10)
+
+        # Test service wrapper non-blocking roast call
+        round_roast = RoomService.generate_round_roast(code)
+        self.assertEqual(round_roast["room_code"], code)
+        self.assertIn("roast", round_roast)
+
+    def test_match_recap_generation(self):
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+
+        recap = AIService.generate_match_highlight_recap("ELEPHANT", "Alice")
+        self.assertIsInstance(recap, str)
+        self.assertIn("Alice", recap)
+
+        match_recap = RoomService.generate_match_recap(code)
+        self.assertEqual(match_recap["room_code"], code)
+        self.assertIn("recap", match_recap)
+
+    def test_end_round_non_blocking(self):
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+        RoomService.join_room(code, "Bob", "sess_bob")
+        RoomService.start_game(code, "Alice")
+        room = Room.objects.get(code=code)
+
+        # Verify end_round returns immediately
+        end_res = RoomService.end_round(code)
+        self.assertEqual(end_res["phase"], Room.PHASE_ROUND_END)
+        self.assertTrue(end_res["roast_mode_enabled"])
+
+
 class RoomServicePhase3AITest(TestCase):
     def setUp(self):
         RoomService.seed_word_bank()
