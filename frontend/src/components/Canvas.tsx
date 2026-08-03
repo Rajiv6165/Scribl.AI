@@ -15,6 +15,7 @@ interface CanvasProps {
   color: string;
   brushSize: number;
   isEraser: boolean;
+  isReadOnly?: boolean;
   onStrokeComplete: (payload: StrokePayload) => void;
 }
 
@@ -22,6 +23,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(({
   color,
   brushSize,
   isEraser,
+  isReadOnly = false,
   onStrokeComplete,
 }, ref) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -126,6 +128,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(({
   };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isReadOnly) return;
     canvasRef.current?.setPointerCapture(e.pointerId);
     setIsDrawing(true);
 
@@ -147,7 +150,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!isDrawing) return;
+    if (isReadOnly || !isDrawing) return;
 
     const pt = getCanvasCoordinates(e);
     if (!pt) return;

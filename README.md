@@ -1,35 +1,46 @@
 # Scribl.AI — Real-Time Multiplayer Drawing & Guessing App
 
-Scribl.AI is a high-performance, production-grade real-time multiplayer drawing application. Built with a decoupled monorepo architecture, this phase delivers real-time canvas synchronization, stroke-by-stroke replay data storage, player room lobbies, and scalable Redis pub/sub.
+Scribl.AI is a high-performance, production-grade real-time multiplayer drawing and guessing game. Built with a decoupled monorepo architecture, it features real-time canvas synchronization, time-based competitive scoring, server-side anti-cheat word validation, stroke-by-stroke replay data storage, and scalable Redis pub/sub.
 
 ---
 
-## 🎨 Features (Foundation Phase)
+## 🎮 Game Flow & Core Features
 
-- **Real-Time Multiplayer Canvas**: Synchronized drawing across multiple clients using WebSockets and Django Channels.
-- **Client-Side Stroke Smoothing**: Quadratic Bezier curve point interpolation for smooth rendering regardless of network jitter.
-- **Tools & Palette**: Support for custom color picker, pre-set palette, dynamic brush sizing, eraser, stroke undo, and canvas clear.
-- **Mouse & Touch Support**: Fluid experience on desktops, tablets, and mobile browsers.
-- **Scalable Architecture**: Decoupled service layer (`RoomService`) separate from WebSockets consumers, powered by Redis Channel Layer for scaling behind load balancers.
-- **Replay Data Model**: Every stroke, coordinate, pressure, tool action, and timestamp is stored in PostgreSQL for stroke-by-stroke timeline scrubbing.
-- **Room Lifecycle & Lobby**: Create room, join room via 6-character room code, real-time connected player list.
+### 1. Turn & Round Management
+- **Round Cycle**: Games default to 3 total rounds. Each round rotates drawing turns across all connected players.
+- **Phases**: `LOBBY` ➔ `WORD_SELECT` ➔ `DRAWING` ➔ `ROUND_END` ➔ `GAME_END`.
+
+### 2. Word Selection & Word Bank
+- **Word Bank**: Pre-seeded with ~150 curated drawing words across Animals, Nature, Objects, Food, Clothing, Places, and Fantasy categories.
+- **Selection**: When a turn starts, the active drawer gets 3 random word choices with a 10-second countdown. If no choice is made, a word is automatically selected.
+
+### 3. Server-Side Guessing & Anti-Cheat
+- **Anti-Cheat**: The secret word is stored strictly on the server and is **never** broadcast to non-drawing clients until the round concludes. Guessers only see masked hints e.g. `_ _ _ _ _ _ _ _`.
+- **Chat & Guesses**: Non-drawer players submit text guesses via the live chat.
+- **Dynamic Scoring**:
+  - **Guesser Points**: `500 (Base) + (Time Left % × 500)`. Faster guesses yield higher scores (up to 1,000 pts per round).
+  - **Drawer Bonus**: The drawer receives `+100 pts` bonus for every player who guesses correctly.
+- **Auto Round Completion**: When all non-drawing players guess correctly, the round ends automatically.
+
+### 4. Synced Backend Timers
+- Server emits `timer_start_ms` (epoch) and `timer_duration_sec`. Clients compute remaining time locally to eliminate network latency drift.
+
+### 5. Replay Data Model
+- Every stroke event, coordinate, pressure, tool action, and timestamp is stored in PostgreSQL for stroke-by-stroke timeline scrubbing.
 
 ---
 
 ## 🏗 Tech Stack
 
-- **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS, HTML5 Canvas API.
+- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS, HTML5 Canvas API.
 - **Backend**: Django 5.x, Django Channels (ASGI), Daphne.
 - **Real-Time Channel Layer**: Redis (Pub/Sub for WebSocket group broadcasting).
-- **Database**: PostgreSQL 15 (Rooms, Players, Rounds, Stroke Events).
+- **Database**: PostgreSQL 15 (Rooms, Players, Rounds, Words, Stroke Events).
 - **Containerization**: Docker & Docker Compose.
 
 ---
 
 ## 🚀 Quick Start with Docker Compose
-
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running.
 
 ### 1. Clone & Setup Environment
 ```bash
@@ -41,77 +52,35 @@ cp .env.example .env
 docker-compose up --build
 ```
 
-This will spin up:
-- **PostgreSQL**: `localhost:5432`
-- **Redis**: `localhost:6379`
-- **Django Backend (Daphne ASGI)**: `http://localhost:8000`
-- **Next.js Frontend**: `http://localhost:3000`
+Access Next.js Frontend at: **`http://localhost:3000`**
 
-### 3. Accessing the App
-Open your browser and navigate to:
-👉 **`http://localhost:3000`**
-
-1. Enter your nickname and click **Create Room**.
-2. Copy the generated **Room Code** (or room URL).
-3. Open a second browser window (or incognito tab), navigate to `http://localhost:3000`, enter a second nickname and the Room Code to join.
-4. Draw on one screen and watch strokes sync in real time on the second screen!
+### 3. Playing the Game
+1. Open Browser Window A (`http://localhost:3000`), enter a nickname and click **Create Room**.
+2. Copy the generated **Room Code**.
+3. Open Browser Window B (incognito tab), enter a nickname and the Room Code to join.
+4. Host clicks **Start Game**.
+5. The drawer picks a word from the modal, draws on the canvas, and the guesser types the answer in the live chat to earn points!
 
 ---
 
-## 🧪 Local Manual & Automated Testing (Without Docker)
+## 🧪 Local Automated Testing
 
-### Backend Setup & Tests
+### Backend Unit Tests
 ```bash
 cd backend
-python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On Linux/macOS:
-source venv/bin/activate
-
-pip install -r requirements.txt
-
-# Run migrations (ensure PostgreSQL and Redis are running locally if not using SQLite/in-memory)
-python manage.py migrate
 python manage.py test
 ```
+Tests cover:
+- Room creation and player joining
+- Game initialization and turn rotation
+- Word selection & hint generation
+- Guess validation, time-based scoring calculation, and drawer bonuses
+- Stroke recording & replay serialization
 
-### Frontend Setup & Tests
+### Frontend Production Build
 ```bash
 cd frontend
-npm install
-npm run dev
-```
-
----
-
-## 📊 Replay Data Model Endpoint
-
-To inspect stroke timeline data recorded during drawing sessions:
-```http
-GET http://localhost:8000/api/rooms/<ROOM_CODE>/replay/
-```
-Response format:
-```json
-{
-  "room_code": "AB12CD",
-  "total_strokes": 42,
-  "events": [
-    {
-      "sequence_number": 1,
-      "player_nickname": "Artist",
-      "action_type": "stroke",
-      "payload": {
-        "color": "#4f46e5",
-        "brushSize": 8,
-        "isEraser": false,
-        "points": [
-          {"x": 120.5, "y": 200.1, "pressure": 0.5, "timestamp": 1722718800000},
-          {"x": 125.0, "y": 205.3, "pressure": 0.7, "timestamp": 1722718800016}
-        ]
-      },
-      "created_at": "2026-08-03T21:03:00Z"
-    }
-  ]
-}
+npm run dev # for dev server
+# Or for static type checking & production build:
+node node_modules/next/dist/bin/next build
 ```

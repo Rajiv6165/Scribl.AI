@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Player, StrokePayload, StrokeEventData, IncomingWSMessage } from '../utils/types';
+import {
+  Player,
+  GamePhase,
+  ChatMessage,
+  StrokePayload,
+  StrokeEventData,
+  IncomingWSMessage,
+} from '../utils/types';
 
 interface UseRoomSocketOptions {
   roomCode: string;
@@ -22,6 +29,18 @@ export function useRoomSocket({
   const [players, setPlayers] = useState<Player[]>([]);
   const [isHost, setIsHost] = useState(false);
 
+  // Game Loop State
+  const [phase, setPhase] = useState<GamePhase>('LOBBY');
+  const [currentRoundNum, setCurrentRoundNum] = useState<number>(0);
+  const [totalRounds, setTotalRounds] = useState<number>(3);
+  const [currentDrawer, setCurrentDrawer] = useState<string>('');
+  const [wordChoices, setWordChoices] = useState<string[]>([]);
+  const [wordHint, setWordHint] = useState<string>('');
+  const [revealedWord, setRevealedWord] = useState<string>('');
+  const [timerStartMs, setTimerStartMs] = useState<number>(0);
+  const [timerDurationSec, setTimerDurationSec] = useState<number>(80);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -36,7 +55,6 @@ export function useRoomSocket({
 
     socket.onopen = () => {
       setConnected(true);
-      // Handshake join event
       socket.send(
         JSON.stringify({
           type: 'join_room',
@@ -52,10 +70,65 @@ export function useRoomSocket({
         switch (data.type) {
           case 'room_state':
             setIsHost(data.is_host);
+            setPhase(data.phase || 'LOBBY');
+            setCurrentRoundNum(data.current_round_num || 0);
+            setTotalRounds(data.total_rounds || 3);
+            setCurrentDrawer(data.current_drawer || '');
+            setWordHint(data.word_hint || '');
+            setTimerStartMs(data.timer_start_ms || 0);
+            setTimerDurationSec(data.timer_duration_sec || 80);
             setPlayers(data.players || []);
             if (onStateSynced) {
               onStateSynced(data.canvas_history || []);
             }
+            break;
+
+          case 'game_phase_change':
+            setPhase(data.phase);
+            setCurrentRoundNum(data.current_round_num);
+            setTotalRounds(data.total_rounds);
+            setCurrentDrawer(data.current_drawer || '');
+            setTimerStartMs(data.timer_start_ms || 0);
+            setTimerDurationSec(data.timer_duration_sec || 80);
+            setPlayers(data.players || []);
+
+            if (data.word_choices) {
+              setWordChoices(data.word_choices);
+            } else {
+              setWordChoices([]);
+            }
+
+            if (data.word_hint) {
+              setWordHint(data.word_hint);
+            }
+
+            if (data.revealed_word) {
+              setRevealedWord(data.revealed_word);
+            }
+
+            // Clear local canvas when starting word selection or new round
+            if (data.phase === 'WORD_SELECT') {
+              if (onStateSynced) {
+                onStateSynced([]);
+              }
+            }
+            break;
+
+          case 'chat_message':
+            setChatMessages((prev) => [
+              ...prev,
+              {
+                id: `${Date.now()}-${Math.random()}`,
+                nickname: data.nickname,
+                text: data.text,
+                is_system: data.is_system,
+                timestamp: Date.now(),
+              },
+            ]);
+            break;
+
+          case 'correct_guess':
+            setPlayers(data.players || []);
             break;
 
           case 'player_joined':
@@ -91,7 +164,6 @@ export function useRoomSocket({
 
     socket.onclose = () => {
       setConnected(false);
-      // Auto-reconnect after 3 seconds
       reconnectTimeoutRef.current = setTimeout(() => {
         connect();
       }, 3000);
@@ -115,6 +187,53 @@ export function useRoomSocket({
       }
     };
   }, [connect]);
+
+  const startGame = useCallback(() => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'start_game',
+          nickname,
+        })
+      );
+    }
+  }, [nickname]);
+
+  const selectWord = useCallback((word: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'select_word',
+          nickname,
+          word,
+        })
+      );
+    }
+  }, [nickname]);
+
+  const sendGuess = useCallback((text: string) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'submit_guess',
+          nickname,
+          text,
+        })
+      );
+    }
+  }, [nickname]);
+
+  const notifyTimerExpired = useCallback((currentPhase: GamePhase) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(
+        JSON.stringify({
+          type: 'timer_expired',
+          nickname,
+          phase: currentPhase,
+        })
+      );
+    }
+  }, [nickname]);
 
   const sendStroke = useCallback((payload: StrokePayload) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -154,6 +273,20 @@ export function useRoomSocket({
     connected,
     players,
     isHost,
+    phase,
+    currentRoundNum,
+    totalRounds,
+    currentDrawer,
+    wordChoices,
+    wordHint,
+    revealedWord,
+    timerStartMs,
+    timerDurationSec,
+    chatMessages,
+    startGame,
+    selectWord,
+    sendGuess,
+    notifyTimerExpired,
     sendStroke,
     sendClear,
     sendUndo,

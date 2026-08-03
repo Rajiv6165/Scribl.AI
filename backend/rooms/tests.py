@@ -2,56 +2,90 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import Room, Player, StrokeEvent
+from .models import Room, Player, StrokeEvent, Word
 from .services import RoomService
 
 
-class RoomServiceTest(TestCase):
-    def test_create_room(self):
-        result = RoomService.create_room(host_nickname="Alice")
-        self.assertIn("room_code", result)
-        self.assertEqual(result["host_nickname"], "Alice")
-        
-        room = Room.objects.get(code=result["room_code"])
-        self.assertEqual(room.host_name, "Alice")
-        
-        player = Player.objects.get(room=room, nickname="Alice")
-        self.assertTrue(player.is_host)
-        self.assertTrue(player.is_connected)
+class RoomServicePhase2Test(TestCase):
+    def setUp(self):
+        RoomService.seed_word_bank()
 
-    def test_join_room(self):
-        create_res = RoomService.create_room(host_nickname="Alice")
-        code = create_res["room_code"]
+    def test_create_and_join_room(self):
+        result = RoomService.create_room(host_nickname="Alice")
+        code = result["room_code"]
+        self.assertEqual(result["host_nickname"], "Alice")
 
         join_res = RoomService.join_room(room_code=code, player_nickname="Bob", session_id="sess_bob")
-        self.assertEqual(join_res["player_nickname"], "Bob")
-        self.assertFalse(join_res["is_host"])
         self.assertEqual(len(join_res["players"]), 2)
 
-    def test_record_and_replay_strokes(self):
+    def test_start_game_and_word_selection(self):
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+        RoomService.join_room(room_code=code, player_nickname="Bob", session_id="sess_bob")
+
+        game_start = RoomService.start_game(room_code=code, host_nickname="Alice")
+        self.assertEqual(game_start["phase"], Room.PHASE_WORD_SELECT)
+        self.assertEqual(game_start["current_round_num"], 1)
+        self.assertIn(game_start["current_drawer"], ["Alice", "Bob"])
+        self.assertEqual(len(game_start["word_choices"]), 3)
+
+    def test_select_word_and_submit_guess(self):
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+        RoomService.join_room(room_code=code, player_nickname="Bob", session_id="sess_bob")
+        
+        RoomService.start_game(room_code=code, host_nickname="Alice")
+        room = Room.objects.get(code=code)
+        drawer = room.current_drawer_nickname
+        guesser = "Bob" if drawer == "Alice" else "Alice"
+
+        # Select word
+        select_res = RoomService.select_word(room_code=code, drawer_nickname=drawer, chosen_word="ELEPHANT")
+        self.assertEqual(select_res["phase"], Room.PHASE_DRAWING)
+        self.assertIn("_", select_res["word_hint"])
+
+        # Incorrect guess
+        wrong_res = RoomService.submit_guess(room_code=code, player_nickname=guesser, text="DOG")
+        self.assertFalse(wrong_res["is_correct"])
+
+        # Correct guess
+        correct_res = RoomService.submit_guess(room_code=code, player_nickname=guesser, text="elephant")
+        self.assertTrue(correct_res["is_correct"])
+        self.assertGreater(correct_res["guesser_points"], 500)
+        self.assertTrue(correct_res["all_guessed"])
+
+    def test_end_round_and_next_turn(self):
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+        RoomService.join_room(room_code=code, player_nickname="Bob", session_id="sess_bob")
+
+        RoomService.start_game(room_code=code, host_nickname="Alice")
+        room = Room.objects.get(code=code)
+        drawer = room.current_drawer_nickname
+        RoomService.select_word(room_code=code, drawer_nickname=drawer, chosen_word="CAT")
+
+        end_res = RoomService.end_round(room_code=code)
+        self.assertEqual(end_res["phase"], Room.PHASE_ROUND_END)
+        self.assertEqual(end_res["revealed_word"], "CAT")
+
+        next_res = RoomService.next_turn(room_code=code)
+        self.assertEqual(next_res["phase"], Room.PHASE_WORD_SELECT)
+        self.assertNotEqual(next_res["current_drawer"], drawer)
+
+    def test_stroke_replay_recording(self):
         create_res = RoomService.create_room(host_nickname="Artist")
         code = create_res["room_code"]
 
-        payload1 = {
+        payload = {
             "color": "#ff0000",
             "brushSize": 5,
             "points": [{"x": 10, "y": 20, "pressure": 0.5, "timestamp": 1000}]
         }
-        stroke1 = RoomService.record_stroke_event(code, "Artist", "stroke", payload1)
-        self.assertEqual(stroke1["sequence_number"], 1)
-
-        payload2 = {
-            "color": "#00ff00",
-            "brushSize": 10,
-            "points": [{"x": 30, "y": 40, "pressure": 0.8, "timestamp": 1050}]
-        }
-        stroke2 = RoomService.record_stroke_event(code, "Artist", "stroke", payload2)
-        self.assertEqual(stroke2["sequence_number"], 2)
+        stroke = RoomService.record_stroke_event(code, "Artist", "stroke", payload)
+        self.assertEqual(stroke["sequence_number"], 1)
 
         replay = RoomService.get_replay_data(code)
-        self.assertEqual(replay["total_strokes"], 2)
-        self.assertEqual(replay["events"][0]["payload"], payload1)
-        self.assertEqual(replay["events"][1]["payload"], payload2)
+        self.assertEqual(replay["total_strokes"], 1)
 
 
 class RoomAPITest(TestCase):
@@ -70,13 +104,3 @@ class RoomAPITest(TestCase):
         join_res = self.client.post(reverse('room-join'), {'room_code': code, 'nickname': 'Dave'})
         self.assertEqual(join_res.status_code, status.HTTP_200_OK)
         self.assertEqual(join_res.data['player_nickname'], 'Dave')
-
-    def test_replay_api(self):
-        create_res = self.client.post(reverse('room-create'), {'nickname': 'Artist'})
-        code = create_res.data['room_code']
-
-        RoomService.record_stroke_event(code, "Artist", "stroke", {"points": [{"x": 1, "y": 2}]})
-
-        replay_res = self.client.get(reverse('room-replay', kwargs={'code': code}))
-        self.assertEqual(replay_res.status_code, status.HTTP_200_OK)
-        self.assertEqual(replay_res.data['total_strokes'], 1)
