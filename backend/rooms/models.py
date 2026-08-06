@@ -96,6 +96,19 @@ class Round(models.Model):
         return f"Round {self.round_number} for Room {self.room.code}"
 
 
+class Guess(models.Model):
+    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name='guesses')
+    player_nickname = models.CharField(max_length=50)
+    text = models.CharField(max_length=100)
+    is_correct = models.BooleanField(default=False)
+    points_awarded = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Guess '{self.text}' by {self.player_nickname} (correct={self.is_correct}) in Round {self.round.id}"
+
+
+
 class StrokeEvent(models.Model):
     ACTION_STROKE = 'stroke'
     ACTION_CLEAR = 'clear'

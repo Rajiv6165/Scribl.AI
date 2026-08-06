@@ -11,9 +11,11 @@ import { WordHintDisplay } from '../../../components/WordHintDisplay';
 import { WordSelectModal } from '../../../components/WordSelectModal';
 import { RoundEndModal } from '../../../components/RoundEndModal';
 import { AIWordPackModal } from '../../../components/AIWordPackModal';
+import { ReplayPlayer } from '../../../components/ReplayPlayer';
+import { MatchHistoryModal } from '../../../components/MatchHistoryModal';
 import { RoomHeader } from '../../../components/RoomHeader';
-import { StrokePayload, StrokeEventData } from '../../../utils/types';
-import { Bot, Wand2, Flame } from 'lucide-react';
+import { StrokePayload, StrokeEventData, ReplayData, MatchHistoryData } from '../../../utils/types';
+import { Bot, Wand2, Flame, History, Play } from 'lucide-react';
 
 export default function RoomPage() {
   const params = useParams();
@@ -29,6 +31,10 @@ export default function RoomPage() {
   const [isEraser, setIsEraser] = useState<boolean>(false);
   const [showThemeModal, setShowThemeModal] = useState<boolean>(false);
 
+  const [activeReplayData, setActiveReplayData] = useState<ReplayData | null>(null);
+  const [activeMatchHistory, setActiveMatchHistory] = useState<MatchHistoryData | null>(null);
+  const [isLoadingReplay, setIsLoadingReplay] = useState<boolean>(false);
+
   const canvasRef = useRef<CanvasRef | null>(null);
 
   useEffect(() => {
@@ -39,6 +45,37 @@ export default function RoomPage() {
       setNickname(stored);
     }
   }, [searchNickname, router]);
+
+  const handleFetchRoundReplay = async (roundId?: number) => {
+    try {
+      setIsLoadingReplay(true);
+      const apiHost = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      let url = `${apiHost}/api/rooms/${roomCode}/replay/`;
+      if (roundId) {
+        url = `${apiHost}/api/rooms/${roomCode}/rounds/${roundId}/replay/`;
+      }
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Failed to fetch replay data');
+      const data: ReplayData = await res.json();
+      setActiveReplayData(data);
+    } catch (err) {
+      console.error('Error fetching replay data:', err);
+    } finally {
+      setIsLoadingReplay(false);
+    }
+  };
+
+  const handleFetchMatchHistory = async () => {
+    try {
+      const apiHost = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const res = await fetch(`${apiHost}/api/rooms/${roomCode}/rounds/`);
+      if (!res.ok) throw new Error('Failed to fetch match history');
+      const data: MatchHistoryData = await res.json();
+      setActiveMatchHistory(data);
+    } catch (err) {
+      console.error('Error fetching match history:', err);
+    }
+  };
 
   const handleRemoteStroke = (data: { nickname: string; payload: StrokePayload }) => {
     if (data.nickname !== nickname) {
@@ -169,6 +206,15 @@ export default function RoomPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleFetchMatchHistory}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>Match History</span>
+            </button>
+
             {customTheme && (
               <span className="text-xs font-semibold text-purple-300 bg-purple-950/60 px-3 py-1 rounded-xl border border-purple-800/50">
                 Theme: <strong>{customTheme}</strong>
@@ -285,8 +331,28 @@ export default function RoomPage() {
           players={players}
           timerStartMs={timerStartMs}
           timerDurationSec={timerDurationSec}
+          onWatchReplay={() => handleFetchRoundReplay()}
+          onOpenMatchHistory={handleFetchMatchHistory}
+        />
+      )}
+
+      {/* Replay Player Modal */}
+      {activeReplayData && (
+        <ReplayPlayer
+          replayData={activeReplayData}
+          onClose={() => setActiveReplayData(null)}
+        />
+      )}
+
+      {/* Match History Modal */}
+      {activeMatchHistory && (
+        <MatchHistoryModal
+          historyData={activeMatchHistory}
+          onSelectRoundReplay={(roundId) => handleFetchRoundReplay(roundId)}
+          onClose={() => setActiveMatchHistory(null)}
         />
       )}
     </div>
   );
 }
+

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Trophy, Sparkles, Clock, Bot, Flame } from 'lucide-react';
+import { Trophy, Sparkles, Clock, Bot, Flame, Play, History } from 'lucide-react';
 import { Player, GamePhase } from '../utils/types';
 
 interface RoundEndModalProps {
@@ -12,6 +12,8 @@ interface RoundEndModalProps {
   players: Player[];
   timerStartMs: number;
   timerDurationSec: number;
+  onWatchReplay?: () => void;
+  onOpenMatchHistory?: () => void;
 }
 
 export const RoundEndModal: React.FC<RoundEndModalProps> = ({
@@ -22,6 +24,8 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
   players,
   timerStartMs,
   timerDurationSec,
+  onWatchReplay,
+  onOpenMatchHistory,
 }) => {
   const [timeLeft, setTimeLeft] = useState<number>(timerDurationSec);
 
@@ -100,6 +104,27 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
           </>
         )}
 
+        {/* Action Buttons for Replay & Match History */}
+        <div className="flex items-center gap-3 mb-6">
+          {onWatchReplay && (
+            <button
+              onClick={onWatchReplay}
+              className="flex-1 py-2.5 px-4 rounded-xl bg-brand-500 hover:bg-brand-400 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-brand-500/30 transition"
+            >
+              <Play className="w-4 h-4" /> Watch Replay
+            </button>
+          )}
+
+          {onOpenMatchHistory && (
+            <button
+              onClick={onOpenMatchHistory}
+              className="flex-1 py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 transition"
+            >
+              <History className="w-4 h-4" /> Match History
+            </button>
+          )}
+        </div>
+
         {/* Current Leaderboard Standings */}
         <div className="bg-slate-900/60 rounded-2xl p-4 border border-slate-800 mb-6 text-left max-h-40 overflow-y-auto">
           <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Final Standings</h4>
@@ -138,3 +163,4 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
     </div>
   );
 };
+

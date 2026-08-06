@@ -76,3 +76,22 @@ class RoomReplayView(APIView):
             return Response(replay_data, status=status.HTTP_200_OK)
         except ValueError as err:
             return Response({'error': str(err)}, status=status.HTTP_404_NOT_FOUND)
+
+
+class RoundReplayDetailView(APIView):
+    def get(self, request, code, round_id):
+        try:
+            replay_data = RoomService.get_round_replay(room_code=code, round_id=round_id)
+            return Response(replay_data, status=status.HTTP_200_OK)
+        except ValueError as err:
+            return Response({'error': str(err)}, status=status.HTTP_404_NOT_FOUND)
+
+
+class MatchHistoryView(APIView):
+    def get(self, request, code):
+        try:
+            match_data = RoomService.get_match_history(room_code=code)
+            return Response(match_data, status=status.HTTP_200_OK)
+        except ValueError as err:
+            return Response({'error': str(err)}, status=status.HTTP_404_NOT_FOUND)
+

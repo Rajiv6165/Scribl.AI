@@ -156,3 +156,49 @@ export type IncomingWSMessage =
   | DrawStrokeMessage
   | ClearCanvasMessage
   | UndoStrokeMessage;
+
+export interface ReplayGuess {
+  nickname: string;
+  text: string;
+  is_correct: boolean;
+  points_awarded?: number;
+  created_at?: string;
+  timestamp_ms: number;
+}
+
+export interface ReplayData {
+  round_id: number;
+  round_number: number;
+  room_code: string;
+  word: string;
+  drawer: string;
+  status: string;
+  started_at?: string;
+  ended_at?: string;
+  duration: number;
+  guessers: ReplayGuess[];
+  total_strokes: number;
+  events: StrokeEventData[];
+}
+
+export interface RoundSummary {
+  round_id: number;
+  round_number: number;
+  drawer: string;
+  word: string;
+  status: string;
+  started_at?: string;
+  ended_at?: string;
+  correct_guessers: string[];
+  total_strokes: number;
+  events: StrokeEventData[];
+}
+
+export interface MatchHistoryData {
+  room_code: string;
+  host_name: string;
+  phase: string;
+  total_rounds: number;
+  rounds: RoundSummary[];
+}
+

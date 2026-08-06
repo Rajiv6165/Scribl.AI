@@ -3,7 +3,7 @@ import random
 from channels.db import database_sync_to_async
 from django.db import transaction
 from django.utils import timezone
-from .models import Room, Player, StrokeEvent, Round, Word
+from .models import Room, Player, StrokeEvent, Round, Word, Guess
 from .word_bank import STARTER_WORDS
 from .ai_service import AIService
 
@@ -323,6 +323,22 @@ class RoomService:
         room.timer_duration_sec = 80
         room.save(update_fields=['current_word', 'word_hint', 'phase', 'timer_start_ms', 'timer_duration_sec'])
 
+        # Mark previous active rounds completed
+        Round.objects.filter(room=room, status=Round.STATUS_ACTIVE).update(
+            status=Round.STATUS_COMPLETED,
+            ended_at=timezone.now()
+        )
+
+        # Create new active round instance
+        Round.objects.create(
+            room=room,
+            round_number=room.current_round_num,
+            drawer_nickname=room.current_drawer_nickname,
+            word=word_clean,
+            status=Round.STATUS_ACTIVE,
+            started_at=timezone.now()
+        )
+
         return {
             "room_code": room.code,
             "phase": room.phase,
@@ -353,8 +369,12 @@ class RoomService:
 
         clean_text = text.strip().upper()
         target_word = room.current_word.upper().strip()
+        is_correct = (clean_text == target_word)
+        guesser_pts = 0
 
-        if clean_text == target_word:
+        active_round = room.rounds.filter(status=Round.STATUS_ACTIVE).last()
+
+        if is_correct:
             now_ms = int(time.time() * 1000)
             elapsed_sec = max(0, (now_ms - room.timer_start_ms) / 1000.0)
             time_left_sec = max(0.0, room.timer_duration_sec - elapsed_sec)
@@ -377,6 +397,15 @@ class RoomService:
             non_drawers = Player.objects.filter(room=room, is_connected=True).exclude(nickname=room.current_drawer_nickname)
             all_guessed = non_drawers.filter(has_guessed=False).count() == 0
 
+            if active_round:
+                Guess.objects.create(
+                    round=active_round,
+                    player_nickname=player.nickname,
+                    text=text,
+                    is_correct=True,
+                    points_awarded=guesser_pts
+                )
+
             return {
                 "is_correct": True,
                 "player_nickname": player.nickname,
@@ -385,6 +414,15 @@ class RoomService:
                 "all_guessed": all_guessed,
                 "players": RoomService.get_room_players_sync(room),
             }
+
+        if active_round:
+            Guess.objects.create(
+                round=active_round,
+                player_nickname=player.nickname,
+                text=text,
+                is_correct=False,
+                points_awarded=0
+            )
 
         return {"is_correct": False, "text": text}
 
@@ -478,6 +516,12 @@ class RoomService:
         room.timer_duration_sec = 10
         room.save(update_fields=['phase', 'timer_start_ms', 'timer_duration_sec'])
 
+        active_round = room.rounds.filter(status=Round.STATUS_ACTIVE).last()
+        if active_round:
+            active_round.status = Round.STATUS_COMPLETED
+            active_round.ended_at = timezone.now()
+            active_round.save(update_fields=['status', 'ended_at'])
+
         players_list = RoomService.get_room_players_sync(room)
 
         return {
@@ -486,6 +530,7 @@ class RoomService:
             "roast_mode_enabled": room.roast_mode_enabled,
             "revealed_word": room.current_word,
             "current_drawer": room.current_drawer_nickname,
+            "round_id": active_round.id if active_round else None,
             "timer_start_ms": room.timer_start_ms,
             "timer_duration_sec": room.timer_duration_sec,
             "players": players_list,
@@ -589,6 +634,109 @@ class RoomService:
             }
         except Room.DoesNotExist:
             raise ValueError(f"Room {room_code} does not exist.")
+
+    @staticmethod
+    def get_round_replay(room_code: str, round_id: int) -> dict:
+        """Fetch ordered stroke timeline plus round metadata for a specific round."""
+        try:
+            room = Room.objects.get(code=room_code.upper())
+        except Room.DoesNotExist:
+            raise ValueError(f"Room {room_code} does not exist.")
+
+        round_obj = Round.objects.filter(room=room, id=round_id).first()
+        if not round_obj:
+            raise ValueError(f"Round {round_id} does not exist for room {room_code}.")
+
+        strokes = StrokeEvent.objects.filter(round=round_obj).order_by('sequence_number', 'created_at')
+        if not strokes.exists():
+            strokes = StrokeEvent.objects.filter(room=room).order_by('sequence_number', 'created_at')
+
+        guesses = round_obj.guesses.all().order_by('created_at')
+        guessers = []
+        for g in guesses:
+            offset_ms = 0
+            if round_obj.started_at and g.created_at:
+                offset_ms = max(0, int((g.created_at - round_obj.started_at).total_seconds() * 1000))
+            guessers.append({
+                "nickname": g.player_nickname,
+                "text": g.text,
+                "is_correct": g.is_correct,
+                "points_awarded": g.points_awarded,
+                "created_at": g.created_at.isoformat(),
+                "timestamp_ms": offset_ms,
+            })
+
+        duration = 80
+        if round_obj.started_at and round_obj.ended_at:
+            duration = max(1, int((round_obj.ended_at - round_obj.started_at).total_seconds()))
+
+        return {
+            "round_id": round_obj.id,
+            "round_number": round_obj.round_number,
+            "room_code": room.code,
+            "word": round_obj.word,
+            "drawer": round_obj.drawer_nickname,
+            "status": round_obj.status,
+            "started_at": round_obj.started_at.isoformat() if round_obj.started_at else None,
+            "ended_at": round_obj.ended_at.isoformat() if round_obj.ended_at else None,
+            "duration": duration,
+            "guessers": guessers,
+            "total_strokes": strokes.count(),
+            "events": [
+                {
+                    "sequence_number": s.sequence_number,
+                    "player_nickname": s.player_nickname,
+                    "action_type": s.action_type,
+                    "payload": s.payload,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                }
+                for s in strokes
+            ]
+        }
+
+    @staticmethod
+    def get_match_history(room_code: str) -> dict:
+        """Fetch list of all rounds played in a room session with thumbnails and correct guessers."""
+        try:
+            room = Room.objects.get(code=room_code.upper())
+        except Room.DoesNotExist:
+            raise ValueError(f"Room {room_code} does not exist.")
+
+        rounds = Round.objects.filter(room=room).order_by('round_number', 'id')
+        rounds_data = []
+
+        for r in rounds:
+            correct_guessers = list(r.guesses.filter(is_correct=True).values_list('player_nickname', flat=True).distinct())
+            round_strokes = StrokeEvent.objects.filter(round=r).order_by('sequence_number')
+            rounds_data.append({
+                "round_id": r.id,
+                "round_number": r.round_number,
+                "drawer": r.drawer_nickname,
+                "word": r.word,
+                "status": r.status,
+                "started_at": r.started_at.isoformat() if r.started_at else None,
+                "ended_at": r.ended_at.isoformat() if r.ended_at else None,
+                "correct_guessers": correct_guessers,
+                "total_strokes": round_strokes.count(),
+                "events": [
+                    {
+                        "sequence_number": s.sequence_number,
+                        "player_nickname": s.player_nickname,
+                        "action_type": s.action_type,
+                        "payload": s.payload,
+                    }
+                    for s in round_strokes
+                ]
+            })
+
+        return {
+            "room_code": room.code,
+            "host_name": room.host_name,
+            "phase": room.phase,
+            "total_rounds": room.total_rounds,
+            "rounds": rounds_data,
+        }
+
 
 
 # Async database wrappers for Channels Consumer
