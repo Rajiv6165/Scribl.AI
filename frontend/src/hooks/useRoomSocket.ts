@@ -8,9 +8,17 @@ import {
   IncomingWSMessage,
 } from '../utils/types';
 
+export interface CommentaryItem {
+  id: string;
+  commentary: string;
+  eventType: string;
+  timestamp: number;
+}
+
 interface UseRoomSocketOptions {
   roomCode: string;
   nickname: string;
+  isSpectator?: boolean;
   onStrokeReceived?: (data: { nickname: string; payload: StrokePayload }) => void;
   onClearReceived?: (nickname: string) => void;
   onUndoReceived?: (nickname: string) => void;
@@ -20,6 +28,7 @@ interface UseRoomSocketOptions {
 export function useRoomSocket({
   roomCode,
   nickname,
+  isSpectator = false,
   onStrokeReceived,
   onClearReceived,
   onUndoReceived,
@@ -28,6 +37,9 @@ export function useRoomSocket({
   const [connected, setConnected] = useState(false);
   const [players, setPlayers] = useState<Player[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(isSpectator);
+  const [spectatorCount, setSpectatorCount] = useState<number>(0);
+  const [commentaryFeed, setCommentaryFeed] = useState<CommentaryItem[]>([]);
 
   // Game Loop, AI, & Roast State
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
@@ -64,6 +76,7 @@ export function useRoomSocket({
         JSON.stringify({
           type: 'join_room',
           nickname: nickname,
+          is_spectator: isSpectator,
         })
       );
     };
@@ -75,6 +88,7 @@ export function useRoomSocket({
         switch (data.type) {
           case 'room_state':
             setIsHost(data.is_host);
+            setIsSpectatorMode(data.is_spectator ?? isSpectator);
             setPhase(data.phase || 'LOBBY');
             setSmartAIEnabled(data.smart_ai_enabled ?? true);
             setRoastModeEnabled(data.roast_mode_enabled ?? true);
@@ -86,6 +100,7 @@ export function useRoomSocket({
             setTimerStartMs(data.timer_start_ms || 0);
             setTimerDurationSec(data.timer_duration_sec || 80);
             setPlayers(data.players || []);
+            setSpectatorCount(data.spectator_count || 0);
             if (onStateSynced) {
               onStateSynced(data.canvas_history || []);
             }
@@ -139,6 +154,28 @@ export function useRoomSocket({
             setMatchRecap(data.recap);
             break;
 
+          case 'spectator_commentary':
+            setCommentaryFeed((prev) => [
+              {
+                id: `${Date.now()}-${Math.random()}`,
+                commentary: data.commentary,
+                eventType: data.event_type,
+                timestamp: Date.now(),
+              },
+              ...prev.slice(0, 9),
+            ]);
+            break;
+
+          case 'player_flagged':
+            setPlayers((prev) =>
+              prev.map((p) =>
+                p.nickname.toLowerCase() === data.nickname.toLowerCase()
+                  ? { ...p, is_flagged: true, anomaly_score: data.anomaly_score }
+                  : p
+              )
+            );
+            break;
+
           case 'chat_message':
             setChatMessages((prev) => [
               ...prev,
@@ -159,6 +196,9 @@ export function useRoomSocket({
           case 'player_joined':
           case 'player_left':
             setPlayers(data.players || []);
+            if (data.spectator_count !== undefined) {
+              setSpectatorCount(data.spectator_count);
+            }
             break;
 
           case 'draw_stroke':
@@ -178,12 +218,9 @@ export function useRoomSocket({
               onUndoReceived(data.nickname);
             }
             break;
-
-          default:
-            break;
         }
       } catch (err) {
-        console.error('Failed to parse WebSocket message:', err);
+        console.error('Error handling WebSocket message:', err);
       }
     };
 
@@ -194,11 +231,11 @@ export function useRoomSocket({
       }, 3000);
     };
 
-    socket.onerror = (err) => {
-      console.error('WebSocket error:', err);
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
       socket.close();
     };
-  }, [roomCode, nickname, onStrokeReceived, onClearReceived, onUndoReceived, onStateSynced]);
+  }, [roomCode, nickname, isSpectator, onStrokeReceived, onClearReceived, onUndoReceived, onStateSynced]);
 
   useEffect(() => {
     connect();
@@ -213,90 +250,86 @@ export function useRoomSocket({
     };
   }, [connect]);
 
-  const toggleAI = useCallback((enabled: boolean) => {
+  // Actions
+  const toggleSmartAI = useCallback((enabled: boolean) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'toggle_ai',
-          nickname,
           enabled,
         })
       );
     }
-  }, [nickname]);
+  }, []);
 
   const toggleRoastMode = useCallback((enabled: boolean) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'toggle_roast_mode',
-          nickname,
           enabled,
         })
       );
     }
-  }, [nickname]);
+  }, []);
 
   const generateWordPack = useCallback((theme: string) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'generate_word_pack',
-          nickname,
           theme,
         })
       );
     }
-  }, [nickname]);
+  }, []);
 
   const startGame = useCallback(() => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'start_game',
-          nickname,
         })
       );
     }
-  }, [nickname]);
+  }, []);
 
   const selectWord = useCallback((word: string) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'select_word',
-          nickname,
           word,
         })
       );
     }
-  }, [nickname]);
+  }, []);
 
-  const sendGuess = useCallback((text: string) => {
+  const submitGuess = useCallback((text: string) => {
+    if (isSpectator) return;
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'submit_guess',
-          nickname,
           text,
         })
       );
     }
-  }, [nickname]);
+  }, [isSpectator]);
 
-  const notifyTimerExpired = useCallback((currentPhase: GamePhase) => {
+  const sendTimerExpired = useCallback((currentPhase: GamePhase) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
           type: 'timer_expired',
-          nickname,
           phase: currentPhase,
         })
       );
     }
-  }, [nickname]);
+  }, []);
 
   const sendStroke = useCallback((payload: StrokePayload) => {
+    if (isSpectator) return;
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
@@ -306,9 +339,10 @@ export function useRoomSocket({
         })
       );
     }
-  }, [nickname]);
+  }, [nickname, isSpectator]);
 
   const sendClear = useCallback(() => {
+    if (isSpectator) return;
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
@@ -317,9 +351,10 @@ export function useRoomSocket({
         })
       );
     }
-  }, [nickname]);
+  }, [nickname, isSpectator]);
 
   const sendUndo = useCallback(() => {
+    if (isSpectator) return;
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
       socketRef.current.send(
         JSON.stringify({
@@ -328,12 +363,15 @@ export function useRoomSocket({
         })
       );
     }
-  }, [nickname]);
+  }, [nickname, isSpectator]);
 
   return {
     connected,
     players,
     isHost,
+    isSpectatorMode,
+    spectatorCount,
+    commentaryFeed,
     phase,
     smartAIEnabled,
     roastModeEnabled,
@@ -349,13 +387,13 @@ export function useRoomSocket({
     timerStartMs,
     timerDurationSec,
     chatMessages,
-    toggleAI,
+    toggleSmartAI,
     toggleRoastMode,
     generateWordPack,
     startGame,
     selectWord,
-    sendGuess,
-    notifyTimerExpired,
+    submitGuess,
+    sendTimerExpired,
     sendStroke,
     sendClear,
     sendUndo,

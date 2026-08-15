@@ -6,6 +6,7 @@ from django.utils import timezone
 from .models import Room, Player, StrokeEvent, Round, Word, Guess
 from .word_bank import STARTER_WORDS
 from .ai_service import AIService
+from .anti_cheat import StrokeAnomalyDetector
 
 
 class RoomService:
@@ -144,7 +145,7 @@ class RoomService:
         }
 
     @staticmethod
-    def join_room(room_code: str, player_nickname: str, session_id: str) -> dict:
+    def join_room(room_code: str, player_nickname: str, session_id: str, is_spectator: bool = False) -> dict:
         """Join an existing room or update connection status."""
         room_code = room_code.upper().strip()
         player_nickname = player_nickname.strip()
@@ -165,21 +166,25 @@ class RoomService:
                 'is_host': False,
                 'is_connected': True,
                 'is_ai': False,
+                'is_spectator': is_spectator,
             }
         )
 
         if not created:
             player.session_id = session_id
             player.is_connected = True
+            player.is_spectator = is_spectator
             player.last_seen = timezone.now()
-            player.save(update_fields=['session_id', 'is_connected', 'last_seen'])
+            player.save(update_fields=['session_id', 'is_connected', 'is_spectator', 'last_seen'])
 
         players_list = RoomService.get_room_players_sync(room)
+        spectator_count = RoomService.get_spectator_count_sync(room)
 
         return {
             "room_code": room.code,
             "player_nickname": player.nickname,
             "is_host": player.is_host,
+            "is_spectator": player.is_spectator,
             "status": room.phase,
             "phase": room.phase,
             "smart_ai_enabled": room.smart_ai_enabled,
@@ -192,6 +197,7 @@ class RoomService:
             "timer_start_ms": room.timer_start_ms,
             "timer_duration_sec": room.timer_duration_sec,
             "players": players_list,
+            "spectator_count": spectator_count,
         }
 
     @staticmethod
@@ -214,19 +220,27 @@ class RoomService:
 
     @staticmethod
     def get_room_players_sync(room: Room) -> list:
-        """Fetch current players list for room ordered by score."""
-        players = Player.objects.filter(room=room).order_by('-score', 'joined_at')
+        """Fetch current active players list for room ordered by score (excluding spectators)."""
+        players = Player.objects.filter(room=room, is_spectator=False).order_by('-score', 'joined_at')
         return [
             {
                 "nickname": p.nickname,
                 "is_host": p.is_host,
                 "is_connected": p.is_connected,
                 "is_ai": p.is_ai,
+                "is_spectator": False,
+                "is_flagged": p.is_flagged,
+                "anomaly_score": p.anomaly_score,
                 "score": p.score,
                 "has_guessed": p.has_guessed,
             }
             for p in players
         ]
+
+    @staticmethod
+    def get_spectator_count_sync(room: Room) -> int:
+        """Fetch count of connected spectators in room."""
+        return Player.objects.filter(room=room, is_spectator=True, is_connected=True).count()
 
     @staticmethod
     def start_game(room_code: str, host_nickname: str) -> dict:
@@ -236,7 +250,7 @@ class RoomService:
             raise ValueError("Only the host can start the game.")
 
         connected_players = list(
-            Player.objects.filter(room=room, is_connected=True)
+            Player.objects.filter(room=room, is_connected=True, is_spectator=False)
             .values_list('nickname', flat=True)
         )
 
@@ -564,7 +578,7 @@ class RoomService:
 
     @staticmethod
     def record_stroke_event(room_code: str, player_nickname: str, action_type: str, payload: dict) -> dict:
-        """Record stroke event to PostgreSQL for replay & sync."""
+        """Record stroke event to PostgreSQL for replay & sync, and run anti-cheat anomaly check."""
         try:
             room = Room.objects.get(code=room_code.upper())
             active_round = room.rounds.filter(status=Round.STATUS_ACTIVE).last()
@@ -580,11 +594,38 @@ class RoomService:
                 action_type=action_type,
                 payload=payload
             )
+
+            # Anti-Cheat: Analyze recent strokes for suspicious image-pasting patterns
+            is_newly_flagged = False
+            anomaly_score = 0.0
+            reasons = []
+
+            if action_type == 'stroke' and active_round:
+                recent_events = list(StrokeEvent.objects.filter(round=active_round, player_nickname=player_nickname).order_by('sequence_number'))
+                is_suspicious, score, reasons = StrokeAnomalyDetector.analyze_stroke_events(recent_events)
+
+                if is_suspicious:
+                    anomaly_score = score
+                    drawer_player = Player.objects.filter(room=room, nickname=player_nickname).first()
+                    if drawer_player and not drawer_player.is_flagged:
+                        drawer_player.is_flagged = True
+                        drawer_player.anomaly_score = max(drawer_player.anomaly_score, score)
+                        drawer_player.save(update_fields=['is_flagged', 'anomaly_score'])
+                        is_newly_flagged = True
+
+                    if not active_round.is_flagged:
+                        active_round.is_flagged = True
+                        active_round.anomaly_score = max(active_round.anomaly_score, score)
+                        active_round.save(update_fields=['is_flagged', 'anomaly_score'])
+
             return {
                 "sequence_number": stroke.sequence_number,
                 "player_nickname": stroke.player_nickname,
                 "action_type": stroke.action_type,
                 "payload": stroke.payload,
+                "is_flagged": is_newly_flagged,
+                "anomaly_score": anomaly_score,
+                "reasons": reasons,
                 "created_at": stroke.created_at.isoformat(),
             }
         except Room.DoesNotExist:
@@ -757,3 +798,4 @@ async_end_round = database_sync_to_async(RoomService.end_round)
 async_next_turn = database_sync_to_async(RoomService.next_turn)
 async_record_stroke_event = database_sync_to_async(RoomService.record_stroke_event)
 async_get_canvas_history = database_sync_to_async(RoomService.get_canvas_history)
+async_get_spectator_count = database_sync_to_async(RoomService.get_spectator_count_sync)

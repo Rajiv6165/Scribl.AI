@@ -27,6 +27,9 @@ export interface Player {
   is_host: boolean;
   is_connected: boolean;
   is_ai?: boolean;
+  is_spectator?: boolean;
+  is_flagged?: boolean;
+  anomaly_score?: number;
   score: number;
   has_guessed: boolean;
 }
@@ -46,6 +49,8 @@ export type WSMessageType =
   | 'game_phase_change'
   | 'drawing_roast'
   | 'match_recap'
+  | 'spectator_commentary'
+  | 'player_flagged'
   | 'chat_message'
   | 'correct_guess'
   | 'draw_stroke'
@@ -57,6 +62,7 @@ export interface RoomStateMessage {
   room_code: string;
   nickname: string;
   is_host: boolean;
+  is_spectator?: boolean;
   phase: GamePhase;
   smart_ai_enabled: boolean;
   roast_mode_enabled: boolean;
@@ -68,6 +74,7 @@ export interface RoomStateMessage {
   timer_start_ms: number;
   timer_duration_sec: number;
   players: Player[];
+  spectator_count?: number;
   canvas_history: StrokeEventData[];
 }
 
@@ -99,6 +106,19 @@ export interface MatchRecapEvent {
   recap: string;
 }
 
+export interface SpectatorCommentaryEvent {
+  type: 'spectator_commentary';
+  commentary: string;
+  event_type: string;
+}
+
+export interface PlayerFlaggedEvent {
+  type: 'player_flagged';
+  nickname: string;
+  anomaly_score: number;
+  reasons: string[];
+}
+
 export interface ChatMessageEvent {
   type: 'chat_message';
   nickname: string;
@@ -116,13 +136,17 @@ export interface CorrectGuessEvent {
 export interface PlayerJoinedMessage {
   type: 'player_joined';
   nickname: string;
+  is_spectator?: boolean;
   players: Player[];
+  spectator_count?: number;
 }
 
 export interface PlayerLeftMessage {
   type: 'player_left';
   nickname: string;
+  is_spectator?: boolean;
   players: Player[];
+  spectator_count?: number;
 }
 
 export interface DrawStrokeMessage {
@@ -149,6 +173,8 @@ export type IncomingWSMessage =
   | GamePhaseChangeMessage
   | DrawingRoastEvent
   | MatchRecapEvent
+  | SpectatorCommentaryEvent
+  | PlayerFlaggedEvent
   | ChatMessageEvent
   | CorrectGuessEvent
   | PlayerJoinedMessage

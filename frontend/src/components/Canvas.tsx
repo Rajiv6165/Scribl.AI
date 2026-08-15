@@ -194,13 +194,19 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>(({
 
   return (
     <div ref={containerRef} className="relative w-full h-full min-h-[450px] bg-white rounded-2xl overflow-hidden shadow-2xl border border-slate-700/50">
+      {isReadOnly && (
+        <div className="absolute top-3 left-3 z-10 bg-slate-900/80 backdrop-blur-md px-3 py-1 rounded-lg border border-indigo-500/30 text-indigo-300 font-semibold text-xs flex items-center gap-1.5 shadow-md pointer-events-none">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+          <span>Live Spectator Canvas</span>
+        </div>
+      )}
       <canvas
         ref={canvasRef}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
-        className="w-full h-full touch-none cursor-crosshair block"
+        className={`w-full h-full touch-none block ${isReadOnly ? 'cursor-default' : 'cursor-crosshair'}`}
       />
     </div>
   );

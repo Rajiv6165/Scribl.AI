@@ -83,6 +83,19 @@ export default function HomePage() {
     }
   };
 
+  const handleSpectateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomCode.trim()) {
+      setError('Please enter a room code to watch.');
+      return;
+    }
+
+    const name = nickname.trim() || `Spectator_${Math.floor(100 + Math.random() * 900)}`;
+    const code = roomCode.trim().toUpperCase();
+    sessionStorage.setItem('scribl_nickname', name);
+    router.push(`/room/${code}?nickname=${encodeURIComponent(name)}&spectate=true`);
+  };
+
   return (
     <main className="min-h-screen relative flex items-center justify-center p-6 overflow-hidden">
       {/* Dynamic Background Glow Elements */}
@@ -170,15 +183,14 @@ export default function HomePage() {
             <form onSubmit={handleJoinRoom} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
-                  Your Nickname
+                  Your Nickname (Optional for Spectators)
                 </label>
                 <input
                   type="text"
-                  required
                   maxLength={20}
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
-                  placeholder="e.g. Leonardo"
+                  placeholder="e.g. Leonardo (or leave blank to watch)"
                   className="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                 />
               </div>
@@ -198,14 +210,26 @@ export default function HomePage() {
                 />
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-sm shadow-xl shadow-brand-500/25 transition-all transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                <span>{loading ? 'Joining Room...' : 'Join Game Room'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-bold text-xs shadow-xl shadow-brand-500/25 transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>{loading ? 'Joining...' : 'Join Game'}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSpectateRoom}
+                  disabled={loading}
+                  className="w-full py-3 px-4 rounded-xl bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/40 text-purple-200 font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5"
+                >
+                  <span>Watch Spectator</span>
+                  <span className="text-base">👁️</span>
+                </button>
+              </div>
             </form>
           )}
         </div>

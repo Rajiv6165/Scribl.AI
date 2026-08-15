@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Player, GamePhase } from '../utils/types';
-import { Crown, Paintbrush, CheckCircle2, Play, Trophy } from 'lucide-react';
+import { Crown, Paintbrush, CheckCircle2, Play, Trophy, AlertTriangle } from 'lucide-react';
 
 interface ScoreboardProps {
   players: Player[];
@@ -93,6 +93,14 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
 
               {/* Status Badges */}
               <div className="flex items-center gap-1.5">
+                {isHost && player.is_flagged && (
+                  <span
+                    className="p-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 cursor-help"
+                    title={`Anti-cheat flagged suspicious drawing patterns (${Math.round((player.anomaly_score || 0.7) * 100)}% confidence)`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  </span>
+                )}
                 {isDrawing && (
                   <span className="p-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Currently Drawing">
                     <Paintbrush className="w-3.5 h-3.5" />

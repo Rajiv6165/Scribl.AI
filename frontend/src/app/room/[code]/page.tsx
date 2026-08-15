@@ -14,6 +14,7 @@ import { AIWordPackModal } from '../../../components/AIWordPackModal';
 import { ReplayPlayer } from '../../../components/ReplayPlayer';
 import { MatchHistoryModal } from '../../../components/MatchHistoryModal';
 import { RoomHeader } from '../../../components/RoomHeader';
+import { SpectatorCommentary } from '../../../components/SpectatorCommentary';
 import { StrokePayload, StrokeEventData, ReplayData, MatchHistoryData } from '../../../utils/types';
 import { Bot, Wand2, Flame, History, Play } from 'lucide-react';
 
@@ -24,6 +25,7 @@ export default function RoomPage() {
 
   const roomCode = (params.code as string)?.toUpperCase() || '';
   const searchNickname = searchParams.get('nickname') || '';
+  const isSpectatorParam = searchParams.get('spectate') === 'true';
 
   const [nickname, setNickname] = useState<string>('');
   const [color, setColor] = useState<string>('#000000');
@@ -99,6 +101,9 @@ export default function RoomPage() {
     connected,
     players,
     isHost,
+    isSpectatorMode,
+    spectatorCount,
+    commentaryFeed,
     phase,
     smartAIEnabled,
     roastModeEnabled,
@@ -114,19 +119,20 @@ export default function RoomPage() {
     timerStartMs,
     timerDurationSec,
     chatMessages,
-    toggleAI,
+    toggleSmartAI,
     toggleRoastMode,
     generateWordPack,
     startGame,
     selectWord,
-    sendGuess,
-    notifyTimerExpired,
+    submitGuess,
+    sendTimerExpired,
     sendStroke,
     sendClear,
     sendUndo,
   } = useRoomSocket({
     roomCode,
     nickname,
+    isSpectator: isSpectatorParam,
     onStrokeReceived: handleRemoteStroke,
     onClearReceived: handleRemoteClear,
     onUndoReceived: handleRemoteUndo,
@@ -162,7 +168,12 @@ export default function RoomPage() {
   return (
     <div className="min-h-screen p-4 md:p-6 flex flex-col gap-4 max-w-7xl mx-auto">
       {/* Header Bar */}
-      <RoomHeader roomCode={roomCode} connected={connected} />
+      <RoomHeader
+        roomCode={roomCode}
+        connected={connected}
+        spectatorCount={spectatorCount}
+        isSpectatorMode={isSpectatorMode}
+      />
 
       {/* Host AI & Custom Theme Toolbar (Visible in LOBBY for Host) */}
       {phase === 'LOBBY' && isHost && (
@@ -175,7 +186,7 @@ export default function RoomPage() {
               </span>
               <button
                 type="button"
-                onClick={() => toggleAI(!smartAIEnabled)}
+                onClick={() => toggleSmartAI(!smartAIEnabled)}
                 className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
                   smartAIEnabled
                     ? 'bg-purple-600 text-white shadow-md shadow-purple-500/30'
@@ -244,7 +255,7 @@ export default function RoomPage() {
           totalRounds={totalRounds}
           timerStartMs={timerStartMs}
           timerDurationSec={timerDurationSec}
-          onTimerExpired={notifyTimerExpired}
+          onTimerExpired={sendTimerExpired}
         />
       )}
 
@@ -262,21 +273,26 @@ export default function RoomPage() {
           />
         </div>
 
-        {/* Middle Column (6 cols): Drawing Canvas & Toolbar */}
+        {/* Middle Column (6 cols): Drawing Canvas, Live Spectator Commentary & Toolbar */}
         <div className="lg:col-span-6 flex flex-col gap-4">
+          {/* Live AI Spectator Shoutcast Feed (Visible ONLY for Spectators) */}
+          {isSpectatorMode && (
+            <SpectatorCommentary commentaryFeed={commentaryFeed} />
+          )}
+
           <div className="flex-1 min-h-[460px]">
             <Canvas
               ref={canvasRef}
               color={color}
               brushSize={brushSize}
               isEraser={isEraser}
-              isReadOnly={!isDrawer || phase !== 'DRAWING'}
+              isReadOnly={isSpectatorMode || (!isDrawer || phase !== 'DRAWING')}
               onStrokeComplete={handleLocalStrokeComplete}
             />
           </div>
 
           {/* Controls toolbar enabled for active drawer during DRAWING phase */}
-          {isDrawer && phase === 'DRAWING' && (
+          {!isSpectatorMode && isDrawer && phase === 'DRAWING' && (
             <Toolbar
               color={color}
               setColor={setColor}
@@ -297,7 +313,8 @@ export default function RoomPage() {
             currentNickname={nickname}
             isDrawer={isDrawer}
             hasGuessed={hasGuessed}
-            onSendGuess={sendGuess}
+            isSpectator={isSpectatorMode}
+            onSendGuess={submitGuess}
           />
         </div>
       </div>

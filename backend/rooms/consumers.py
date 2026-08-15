@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from channels.db import database_sync_to_async
 from .services import (
     async_join_room,
     async_leave_room,
@@ -18,7 +19,9 @@ from .services import (
     async_next_turn,
     async_record_stroke_event,
     async_get_canvas_history,
+    async_get_spectator_count,
 )
+from .ai_service import AIService
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +31,14 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         super().__init__(*args, **kwargs)
         self.room_code = None
         self.room_group_name = None
+        self.spectator_group_name = None
         self.nickname = None
+        self.is_spectator = False
 
     async def connect(self):
         self.room_code = self.scope['url_route']['kwargs']['room_code'].upper()
         self.room_group_name = f'room_{self.room_code}'
+        self.spectator_group_name = f'room_{self.room_code}_spectators'
 
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -44,13 +50,22 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
     async def disconnect(self, close_code):
         if self.room_group_name and self.nickname:
             result = await async_leave_room(self.room_code, self.nickname)
+            spec_count = await async_get_spectator_count(self.room_code)
             
+            if self.is_spectator and self.spectator_group_name:
+                await self.channel_layer.group_discard(
+                    self.spectator_group_name,
+                    self.channel_name
+                )
+
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'player_left_event',
                     'nickname': self.nickname,
+                    'is_spectator': self.is_spectator,
                     'players': result.get('players', []),
+                    'spectator_count': spec_count,
                 }
             )
 
@@ -93,9 +108,17 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
 
     async def handle_join_room(self, content):
         nickname = content.get('nickname', 'Anonymous')
+        is_spectator = content.get('is_spectator', False)
         self.nickname = nickname
+        self.is_spectator = is_spectator
 
-        join_data = await async_join_room(self.room_code, nickname, self.channel_name)
+        if is_spectator:
+            await self.channel_layer.group_add(
+                self.spectator_group_name,
+                self.channel_name
+            )
+
+        join_data = await async_join_room(self.room_code, nickname, self.channel_name, is_spectator)
         history = await async_get_canvas_history(self.room_code)
 
         await self.send_json({
@@ -103,6 +126,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             'room_code': self.room_code,
             'nickname': self.nickname,
             'is_host': join_data.get('is_host', False),
+            'is_spectator': self.is_spectator,
             'phase': join_data.get('phase', 'LOBBY'),
             'smart_ai_enabled': join_data.get('smart_ai_enabled', True),
             'roast_mode_enabled': join_data.get('roast_mode_enabled', True),
@@ -114,6 +138,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             'timer_start_ms': join_data.get('timer_start_ms', 0),
             'timer_duration_sec': join_data.get('timer_duration_sec', 80),
             'players': join_data.get('players', []),
+            'spectator_count': join_data.get('spectator_count', 0),
             'canvas_history': history,
         })
 
@@ -122,7 +147,9 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             {
                 'type': 'player_joined_event',
                 'nickname': nickname,
+                'is_spectator': self.is_spectator,
                 'players': join_data.get('players', []),
+                'spectator_count': join_data.get('spectator_count', 0),
             }
         )
 
@@ -136,6 +163,7 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'type': 'player_joined_event',
                 'nickname': 'System',
                 'players': result.get('players', []),
+                'spectator_count': await async_get_spectator_count(self.room_code),
             }
         )
 
@@ -192,10 +220,20 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         try:
             result = await async_select_word(self.room_code, self.nickname, chosen_word)
             await self.broadcast_phase_update(result)
+            
+            # Trigger Spectator Commentary for Round Start
+            asyncio.create_task(self.trigger_spectator_commentary('ROUND_START', {
+                'round_num': result.get('current_round_num', 1),
+                'drawer': result.get('current_drawer', 'The drawer'),
+            }))
         except Exception as err:
             await self.send_json({"error": str(err)})
 
     async def handle_submit_guess(self, content):
+        if self.is_spectator:
+            await self.send_json({"error": "Spectators cannot submit guesses."})
+            return
+
         text = content.get('text', '')
         if not text.strip():
             return
@@ -226,11 +264,20 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 }
             )
 
+            # Trigger Spectator Commentary for Correct Guess
+            asyncio.create_task(self.trigger_spectator_commentary('CORRECT_GUESS', {
+                'guesser': guesser_nickname,
+                'time_left': 45,
+            }))
+
             if result.get('all_guessed'):
                 end_res = await async_end_round(self.room_code)
                 await self.broadcast_phase_update(end_res)
-                # Trigger async AI roast task
                 asyncio.create_task(self.trigger_background_roast())
+                asyncio.create_task(self.trigger_spectator_commentary('ROUND_END', {
+                    'round_num': end_res.get('current_round_num', 1),
+                    'drawer': end_res.get('current_drawer', ''),
+                }))
 
         else:
             await self.channel_layer.group_send(
@@ -254,13 +301,15 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         elif phase == 'DRAWING':
             end_res = await async_end_round(self.room_code)
             await self.broadcast_phase_update(end_res)
-            # Trigger async AI roast task
             asyncio.create_task(self.trigger_background_roast())
+            asyncio.create_task(self.trigger_spectator_commentary('ROUND_END', {
+                'round_num': end_res.get('current_round_num', 1),
+                'drawer': end_res.get('current_drawer', ''),
+            }))
         elif phase == 'ROUND_END':
             next_res = await async_next_turn(self.room_code)
             await self.broadcast_phase_update(next_res)
             if next_res.get('phase') == 'GAME_END':
-                # Trigger async AI match recap task
                 asyncio.create_task(self.trigger_background_match_recap())
 
     async def trigger_background_roast(self):
@@ -293,6 +342,22 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         except Exception as err:
             logger.error(f"Error generating match recap: {err}")
 
+    async def trigger_spectator_commentary(self, event_type: str, event_data: dict):
+        """Asynchronously generates play-by-play commentary for spectators only."""
+        try:
+            commentary = await database_sync_to_async(AIService.generate_spectator_commentary)(event_type, event_data)
+            if commentary and self.spectator_group_name:
+                await self.channel_layer.group_send(
+                    self.spectator_group_name,
+                    {
+                        'type': 'spectator_commentary_event',
+                        'commentary': commentary,
+                        'event_type': event_type,
+                    }
+                )
+        except Exception as err:
+            logger.error(f"Spectator commentary trigger error: {err}")
+
     async def broadcast_phase_update(self, phase_data):
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -303,6 +368,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def handle_draw_stroke(self, content):
+        if self.is_spectator:
+            await self.send_json({"error": "Spectators cannot draw."})
+            return
+
         payload = content.get('payload', {})
         nickname = content.get('nickname', self.nickname or 'Anonymous')
 
@@ -322,6 +391,26 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'payload': payload,
             }
         )
+
+        # Anti-Cheat: If anti-cheat flagged suspicious drawing, notify host
+        if saved_stroke.get('is_flagged'):
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'player_flagged_event',
+                    'nickname': nickname,
+                    'anomaly_score': saved_stroke.get('anomaly_score', 0.0),
+                    'reasons': saved_stroke.get('reasons', []),
+                }
+            )
+
+        # Trigger spectator commentary periodically based on stroke milestones
+        seq = saved_stroke.get('sequence_number', 0)
+        if seq in [12, 35, 60]:
+            asyncio.create_task(self.trigger_spectator_commentary('CANVAS_PROGRESS', {
+                'drawer': nickname,
+                'stroke_count': seq,
+            }))
 
         asyncio.create_task(self.trigger_background_ai_guess())
 
@@ -362,6 +451,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             logger.error(f"Background AI guess error: {err}")
 
     async def handle_clear_canvas(self, content):
+        if self.is_spectator:
+            await self.send_json({"error": "Spectators cannot clear canvas."})
+            return
+
         nickname = content.get('nickname', self.nickname or 'Anonymous')
 
         saved_event = await async_record_stroke_event(
@@ -381,6 +474,10 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         )
 
     async def handle_undo_stroke(self, content):
+        if self.is_spectator:
+            await self.send_json({"error": "Spectators cannot undo strokes."})
+            return
+
         nickname = content.get('nickname', self.nickname or 'Anonymous')
 
         saved_event = await async_record_stroke_event(
@@ -424,6 +521,21 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             'recap': event['recap'],
         })
 
+    async def spectator_commentary_event(self, event):
+        await self.send_json({
+            'type': 'spectator_commentary',
+            'commentary': event['commentary'],
+            'event_type': event.get('event_type', 'GENERAL'),
+        })
+
+    async def player_flagged_event(self, event):
+        await self.send_json({
+            'type': 'player_flagged',
+            'nickname': event['nickname'],
+            'anomaly_score': event['anomaly_score'],
+            'reasons': event.get('reasons', []),
+        })
+
     async def chat_message_event(self, event):
         await self.send_json({
             'type': 'chat_message',
@@ -444,14 +556,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
         await self.send_json({
             'type': 'player_joined',
             'nickname': event['nickname'],
+            'is_spectator': event.get('is_spectator', False),
             'players': event['players'],
+            'spectator_count': event.get('spectator_count', 0),
         })
 
     async def player_left_event(self, event):
         await self.send_json({
             'type': 'player_left',
             'nickname': event['nickname'],
+            'is_spectator': event.get('is_spectator', False),
             'players': event['players'],
+            'spectator_count': event.get('spectator_count', 0),
         })
 
     async def draw_stroke_event(self, event):

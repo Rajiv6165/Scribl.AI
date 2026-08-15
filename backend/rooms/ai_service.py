@@ -170,6 +170,75 @@ class AIService:
         return random.choice(fallback_recaps)
 
     @staticmethod
+    def generate_spectator_commentary(event_type: str, event_data: dict) -> str:
+        """
+        Generates short live play-by-play commentary for spectators based ONLY on public event data.
+        NEVER receives or uses the secret word to prevent spoilers.
+        """
+        time_left = event_data.get('time_left', 0)
+        drawer_name = event_data.get('drawer', 'The drawer')
+        guesser_name = event_data.get('guesser', 'A player')
+        stroke_count = event_data.get('stroke_count', 0)
+        round_num = event_data.get('round_num', 1)
+
+        fallbacks = {
+            'ROUND_START': [
+                f"🎙️ Round {round_num} is off! {drawer_name} takes the canvas!",
+                f"🎙️ Here we go! {drawer_name} is stepping up to draw in Round {round_num}!",
+                f"🎙️ Round {round_num} begins! Let's see what {drawer_name} has in store for us!"
+            ],
+            'TIME_MILESTONE': [
+                f"⏰ Just {time_left} seconds remaining! The pressure is rising on the canvas!",
+                f"⚡ {time_left}s left on the clock! Will anyone figure it out in time?",
+                f"⏳ Clock is ticking down: {time_left} seconds left for the remaining guessers!"
+            ],
+            'CANVAS_PROGRESS': [
+                f"🎨 The drawing is really taking shape now! ({stroke_count} strokes placed)",
+                f"🖌️ Bold strokes coming down from {drawer_name}! The crowd is watching closely!",
+                f"✨ Fast pace on the canvas! {drawer_name} is moving quickly!"
+            ],
+            'CORRECT_GUESS': [
+                f"🎉 BOOM! {guesser_name} cracked the drawing with {time_left} seconds left!",
+                f"🔥 What a read! {guesser_name} jumps onto the scoreboard!",
+                f"⚡ Lightning quick guess from {guesser_name}! Score update incoming!"
+            ],
+            'ROUND_END': [
+                f"🏁 Round {round_num} comes to a close! What a performance by {drawer_name}!",
+                f"👏 Time's up! That wraps up Round {round_num}!",
+                f"🏆 End of Round {round_num}! Let's check the updated standings!"
+            ]
+        }
+
+        fallback_list = fallbacks.get(event_type, fallbacks['CANVAS_PROGRESS'])
+        default_commentary = random.choice(fallback_list)
+
+        api_key = os.environ.get('GEMINI_API_KEY', '').strip()
+        if not api_key:
+            return default_commentary
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+
+            prompt = (
+                f"You are a hype esports commentator shoutcasting a drawing game live for spectators. "
+                f"Generate a single short 1-sentence (under 15 words) energetic play-by-play commentary line for this event: "
+                f"Event Type: {event_type}, Time Left: {time_left}s, Drawer: '{drawer_name}', Guesser: '{guesser_name}', Strokes: {stroke_count}. "
+                f"CRITICAL: Do NOT guess or mention any secret drawing words. Keep it strictly focused on the game action, timer, and excitement."
+            )
+
+            response = model.generate_content(prompt)
+            if response and response.text:
+                res_text = response.text.strip().replace('\n', ' ')
+                if res_text:
+                    return f"🎙️ {res_text}"
+        except Exception as err:
+            logger.error(f"Failed to generate spectator commentary via Gemini: {err}")
+
+        return default_commentary
+
+    @staticmethod
     def _fallback_heuristic_guesses(word_hint: str) -> list:
         hint_clean = word_hint.replace(' ', '')
         length = len(hint_clean) if hint_clean else 5

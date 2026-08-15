@@ -2,11 +2,12 @@
 
 import React from 'react';
 import { Player } from '../utils/types';
-import { Crown, User, Wifi, WifiOff } from 'lucide-react';
+import { Crown, User, Wifi, WifiOff, AlertTriangle } from 'lucide-react';
 
 interface PlayerListProps {
   players: Player[];
   currentNickname: string;
+  isHost?: boolean;
 }
 
 // Generate consistent avatar colors from nickname string
@@ -27,7 +28,7 @@ function getAvatarColor(name: string): string {
   return colors[index];
 }
 
-export const PlayerList: React.FC<PlayerListProps> = ({ players, currentNickname }) => {
+export const PlayerList: React.FC<PlayerListProps> = ({ players, currentNickname, isHost = false }) => {
   return (
     <div className="glass-panel p-4 rounded-2xl flex flex-col gap-3 border border-slate-700/50 h-full">
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
@@ -73,6 +74,16 @@ export const PlayerList: React.FC<PlayerListProps> = ({ players, currentNickname
                       {isMe && (
                         <span className="text-[10px] bg-brand-500/30 text-brand-300 px-1.5 py-0.5 rounded font-mono">
                           You
+                        </span>
+                      )}
+                      {/* Host-only Anti-Cheat Flagged Badge */}
+                      {isHost && player.is_flagged && (
+                        <span
+                          className="flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/40 cursor-help"
+                          title={`Anti-cheat flagged suspicious drawing patterns (${Math.round((player.anomaly_score || 0.7) * 100)}% confidence)`}
+                        >
+                          <AlertTriangle className="w-3 h-3 text-amber-400" />
+                          Flagged
                         </span>
                       )}
                     </span>

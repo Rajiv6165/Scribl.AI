@@ -1,14 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Copy, Check, Sparkles, Wifi, WifiOff } from 'lucide-react';
+import { Copy, Check, Sparkles, Wifi, WifiOff, Eye } from 'lucide-react';
 
 interface RoomHeaderProps {
   roomCode: string;
   connected: boolean;
+  spectatorCount?: number;
+  isSpectatorMode?: boolean;
 }
 
-export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomCode, connected }) => {
+export const RoomHeader: React.FC<RoomHeaderProps> = ({
+  roomCode,
+  connected,
+  spectatorCount = 0,
+  isSpectatorMode = false,
+}) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyLink = () => {
@@ -28,10 +35,22 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomCode, connected }) =
         <h1 className="text-xl font-extrabold tracking-tight text-white flex items-center gap-1.5">
           Scribl<span className="text-brand-400">.AI</span>
         </h1>
+
+        {isSpectatorMode && (
+          <span className="ml-2 px-2.5 py-0.5 rounded-md bg-purple-600/30 border border-purple-500/40 text-purple-300 font-extrabold text-xs tracking-wider uppercase">
+            SPECTATING
+          </span>
+        )}
       </div>
 
       {/* Room Code & Invite Copy */}
       <div className="flex items-center gap-3">
+        {/* Spectator Count Indicator */}
+        <div className="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs font-semibold text-slate-300">
+          <Eye className="w-3.5 h-3.5 text-indigo-400" />
+          <span>{spectatorCount} watching</span>
+        </div>
+
         <div className="flex items-center gap-2 bg-slate-900/80 px-3.5 py-1.5 rounded-xl border border-slate-700/80">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Room Code:</span>
           <span className="text-base font-extrabold text-brand-300 tracking-widest font-mono">

@@ -7,6 +7,7 @@ from rest_framework import status
 from .models import Room, Player, StrokeEvent, Word, Round, Guess
 from .services import RoomService
 from .ai_service import AIService
+from .anti_cheat import StrokeAnomalyDetector
 
 
 class RoomServicePhase4Test(TestCase):
@@ -266,4 +267,86 @@ class RoomReplayPhase5Test(TestCase):
         self.assertEqual(response.data["room_code"], code)
         self.assertGreaterEqual(len(response.data["rounds"]), 1)
         self.assertEqual(response.data["rounds"][0]["word"], "BICYCLE")
+
+
+class RoomSpectatorAndAntiCheatTest(TestCase):
+    def setUp(self):
+        RoomService.seed_word_bank()
+
+    def test_spectator_join_and_isolation(self):
+        # 1. Create room with Alice host
+        create_res = RoomService.create_room(host_nickname="Alice")
+        code = create_res["room_code"]
+
+        # 2. Join Bob as active player and Charlie as spectator
+        RoomService.join_room(code, "Bob", "sess_bob", is_spectator=False)
+        spec_res = RoomService.join_room(code, "Charlie", "sess_charlie", is_spectator=True)
+
+        self.assertTrue(spec_res["is_spectator"])
+        self.assertEqual(spec_res["spectator_count"], 1)
+
+        # Active player list should exclude spectators
+        players = spec_res["players"]
+        player_names = [p["nickname"] for p in players]
+        self.assertIn("Alice", player_names)
+        self.assertIn("Bob", player_names)
+        self.assertNotIn("Charlie", player_names)
+
+        # 3. Start game: turn_order must contain only Alice and Bob
+        RoomService.start_game(code, "Alice")
+        room = Room.objects.get(code=code)
+        self.assertNotIn("Charlie", room.turn_order)
+
+    def test_anti_cheat_stroke_anomaly_detection(self):
+        # 1. Normal human-like drawing strokes (variable timing dt ~30ms, natural step sizes)
+        human_stroke_events = []
+        base_t = 1000
+        for i in range(25):
+            human_stroke_events.append({
+                "action_type": "stroke",
+                "payload": {
+                    "points": [
+                        {"x": 10 + i * 4, "y": 20 + (i % 5) * 3, "timestamp": base_t + i * 35 + (i % 3) * 5}
+                    ]
+                }
+            })
+
+        is_suspicious_human, score_human, reasons_human = StrokeAnomalyDetector.analyze_stroke_events(human_stroke_events)
+        self.assertFalse(is_suspicious_human)
+        self.assertLess(score_human, 0.70)
+
+        # 2. Synthetic anomalous drawing strokes (300 points in <10ms, zero variance dt=0ms, instant grid scans)
+        synthetic_stroke_events = []
+        for i in range(300):
+            synthetic_stroke_events.append({
+                "action_type": "stroke",
+                "payload": {
+                    "points": [
+                        {"x": (i % 20) * 10, "y": (i // 20) * 10, "timestamp": 1000}
+                    ]
+                }
+            })
+
+        is_suspicious_synth, score_synth, reasons_synth = StrokeAnomalyDetector.analyze_stroke_events(synthetic_stroke_events)
+        self.assertTrue(is_suspicious_synth)
+        self.assertGreaterEqual(score_synth, 0.70)
+        self.assertGreater(len(reasons_synth), 0)
+
+    def test_spectator_commentary_generation_no_spoilers(self):
+        # Test spectator commentary generation with event metadata
+        commentary = AIService.generate_spectator_commentary("ROUND_START", {
+            "round_num": 1,
+            "drawer": "Alice"
+        })
+        self.assertIsInstance(commentary, str)
+        self.assertIn("Alice", commentary)
+
+        # Confirm secret word is not passed or required
+        commentary_guess = AIService.generate_spectator_commentary("CORRECT_GUESS", {
+            "guesser": "Bob",
+            "time_left": 30
+        })
+        self.assertIsInstance(commentary_guess, str)
+        self.assertIn("Bob", commentary_guess)
+
 

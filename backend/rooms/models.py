@@ -58,7 +58,11 @@ class Player(models.Model):
     is_host = models.BooleanField(default=False)
     is_connected = models.BooleanField(default=True)
     is_ai = models.BooleanField(default=False)
+    is_spectator = models.BooleanField(default=False)
     
+    is_flagged = models.BooleanField(default=False)
+    anomaly_score = models.FloatField(default=0.0)
+
     score = models.IntegerField(default=0)
     has_guessed = models.BooleanField(default=False)
     guess_order = models.IntegerField(default=0)
@@ -70,7 +74,7 @@ class Player(models.Model):
         unique_together = ('room', 'nickname')
 
     def __str__(self):
-        return f"{self.nickname} ({'AI' if self.is_ai else 'User'} - {self.score} pts) in {self.room.code}"
+        return f"{self.nickname} ({'Spectator' if self.is_spectator else ('AI' if self.is_ai else 'User')} - {self.score} pts) in {self.room.code}"
 
 
 class Round(models.Model):
@@ -89,6 +93,8 @@ class Round(models.Model):
     drawer_nickname = models.CharField(max_length=50, blank=True, default='')
     word = models.CharField(max_length=100, blank=True, default='')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    is_flagged = models.BooleanField(default=False)
+    anomaly_score = models.FloatField(default=0.0)
     started_at = models.DateTimeField(auto_now_add=True)
     ended_at = models.DateTimeField(null=True, blank=True)
 

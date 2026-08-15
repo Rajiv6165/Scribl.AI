@@ -10,6 +10,7 @@ interface ChatPanelProps {
   currentNickname: string;
   isDrawer: boolean;
   hasGuessed: boolean;
+  isSpectator?: boolean;
   onSendGuess: (text: string) => void;
 }
 
@@ -18,13 +19,14 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   currentNickname,
   isDrawer,
   hasGuessed,
+  isSpectator = false,
   onSendGuess,
 }) => {
   const [text, setText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   const handleVoiceResult = (spokenText: string) => {
-    if (spokenText && !isDrawer && !hasGuessed) {
+    if (spokenText && !isDrawer && !hasGuessed && !isSpectator) {
       onSendGuess(spokenText);
     }
   };
@@ -46,7 +48,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || isDrawer || hasGuessed) return;
+    if (!text.trim() || isDrawer || hasGuessed || isSpectator) return;
     onSendGuess(text.trim());
     setText('');
   };
@@ -59,7 +61,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
     }
   };
 
-  const isDisabled = isDrawer || hasGuessed;
+  const isDisabled = isDrawer || hasGuessed || isSpectator;
 
   return (
     <div className="glass-panel p-4 rounded-2xl flex flex-col gap-3 border border-slate-700/50 h-full max-h-[500px]">
@@ -71,7 +73,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
         </h3>
         
         {/* Voice Guessing Mic Button */}
-        {isSupported && (
+        {isSupported && !isSpectator && (
           <button
             type="button"
             disabled={isDisabled}
@@ -109,7 +111,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[220px]">
         {chatMessages.length === 0 ? (
           <p className="text-xs text-slate-500 italic py-4 text-center">
-            Type or speak your guess below when drawing starts!
+            {isSpectator ? 'Live player chat messages will appear here.' : 'Type or speak your guess below when drawing starts!'}
           </p>
         ) : (
           chatMessages.map((msg) => {
@@ -153,7 +155,9 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           disabled={isDisabled}
           onChange={(e) => setText(e.target.value)}
           placeholder={
-            isDrawer
+            isSpectator
+              ? 'Spectator Mode — Read Only'
+              : isDrawer
               ? 'You are drawing! Cannot guess.'
               : hasGuessed
               ? 'You guessed correctly!'
