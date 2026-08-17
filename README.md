@@ -97,3 +97,55 @@ Tests cover:
 cd frontend
 node node_modules/next/dist/bin/next build
 ```
+
+---
+
+## ☁️ Production Deployment
+
+The application is structured to be deployed across three main services:
+1. **Next.js Frontend** (Recommended: Vercel)
+2. **Django Backend + ASGI** (Recommended: Render or Railway)
+3. **PostgreSQL & Redis** (Render/Railway managed instances)
+
+### Environment Variables Required
+
+#### Backend (Render/Railway)
+| Variable | Description |
+|----------|-------------|
+| `DJANGO_SETTINGS_MODULE` | Must be set to `scribl_backend.settings.prod` |
+| `SECRET_KEY` | A long, secure random string for Django |
+| `ALLOWED_HOSTS` | Comma-separated list of your backend domains (e.g. `api.yoursite.com,backend.onrender.com`) |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated frontend domains (e.g. `https://yoursite.com`) |
+| `CSRF_TRUSTED_ORIGINS` | Same as CORS origins |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | Redis connection string (e.g. `redis://...`) |
+| `GEMINI_API_KEY` | (Optional) Your Google Gemini API Key |
+
+#### Frontend (Vercel)
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | URL of your deployed backend (e.g. `https://backend.onrender.com`) |
+| `NEXT_PUBLIC_WS_URL` | WebSocket URL of your deployed backend (e.g. `wss://backend.onrender.com`) |
+
+### Deployment Steps
+
+#### 1. Database and Redis (Render/Railway)
+- Provision a PostgreSQL database and a Redis instance on your chosen platform.
+- Save the Internal or External Connection Strings for the backend setup.
+
+#### 2. Backend Deployment (Render/Railway)
+- Create a new Web Service pointing to your GitHub repository's `backend` directory.
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `daphne -b 0.0.0.0 -p $PORT scribl_backend.asgi:application`
+- **Important**: Add a release phase or run migrations manually: `python manage.py migrate`
+- Set all required backend environment variables.
+
+#### 3. Frontend Deployment (Vercel)
+- Import your GitHub repository in Vercel.
+- Set the Root Directory to `frontend`.
+- Set the `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` environment variables pointing to your deployed backend.
+- Deploy!
+
+### ⚠️ Common Pitfalls (CORS & WebSockets)
+- Ensure your `NEXT_PUBLIC_WS_URL` uses `wss://` (secure WebSocket) in production, not `ws://`.
+- If the frontend fails to connect to the backend API, double-check that your Vercel domain is strictly matched in `CORS_ALLOWED_ORIGINS` (with `https://` and no trailing slash).

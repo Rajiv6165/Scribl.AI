@@ -1,16 +1,17 @@
 import os
 from pathlib import Path
+import environ
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+# BASE_DIR is now one level deeper because settings is a package
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
-SECRET_KEY = os.environ.get(
-    'SECRET_KEY', 
-    'django-insecure-scribl-ai-dev-secret-key-change-in-prod'
-)
+env = environ.Env()
+# Take environment variables from .env file if it exists
+env_file = os.path.join(BASE_DIR.parent, '.env')
+if os.path.exists(env_file):
+    environ.Env.read_env(env_file)
 
-DEBUG = os.environ.get('DEBUG', '1') == '1'
-
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+SECRET_KEY = env('SECRET_KEY', default='django-insecure-scribl-ai-dev-secret-key-change-in-prod')
 
 INSTALLED_APPS = [
     'daphne',
@@ -33,6 +34,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -62,53 +64,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'scribl_backend.wsgi.application'
 ASGI_APPLICATION = 'scribl_backend.asgi.application'
 
-# Database Configuration
-POSTGRES_DB = os.environ.get('POSTGRES_DB')
-POSTGRES_USER = os.environ.get('POSTGRES_USER')
-POSTGRES_PASSWORD = os.environ.get('POSTGRES_PASSWORD')
-POSTGRES_HOST = os.environ.get('POSTGRES_HOST')
-POSTGRES_PORT = os.environ.get('POSTGRES_PORT', '5432')
-
-if POSTGRES_DB and POSTGRES_HOST:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': POSTGRES_DB,
-            'USER': POSTGRES_USER,
-            'PASSWORD': POSTGRES_PASSWORD,
-            'HOST': POSTGRES_HOST,
-            'PORT': POSTGRES_PORT,
-        }
-    }
-else:
-    # Local fallback for sqlite when testing outside Docker without PostgreSQL
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
-        }
-    }
-
-# Redis Channel Layer Configuration
-REDIS_HOST = os.environ.get('REDIS_HOST', 'redis')
-REDIS_PORT = os.environ.get('REDIS_PORT', '6379')
-
-if os.environ.get('TESTING') == '1':
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels.layers.InMemoryChannelLayer',
-        },
-    }
-else:
-    CHANNEL_LAYERS = {
-        'default': {
-            'BACKEND': 'channels_redis.core.RedisChannelLayer',
-            'CONFIG': {
-                "hosts": [(REDIS_HOST, int(REDIS_PORT))],
-            },
-        },
-    }
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -130,8 +85,5 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-# CORS Settings
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True

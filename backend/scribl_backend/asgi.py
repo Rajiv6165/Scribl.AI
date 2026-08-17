@@ -1,7 +1,7 @@
 import os
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'scribl_backend.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'scribl_backend.settings.dev')
 django.setup()
 
 from django.core.asgi import get_asgi_application
