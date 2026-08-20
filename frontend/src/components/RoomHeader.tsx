@@ -46,10 +46,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
       {/* Room Code & Invite Copy */}
       <div className="flex items-center gap-3">
         {/* Spectator Count Indicator */}
-        <div className="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs font-semibold text-slate-300">
-          <Eye className="w-3.5 h-3.5 text-indigo-400" />
-          <span>{spectatorCount} watching</span>
-        </div>
+        {spectatorCount > 0 && (
+          <div className="flex items-center gap-1.5 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-700/80 text-xs font-semibold text-slate-300">
+            <Eye className="w-3.5 h-3.5 text-indigo-400" />
+            <span>{spectatorCount} watching</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 bg-slate-900/80 px-3.5 py-1.5 rounded-xl border border-slate-700/80">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Room Code:</span>

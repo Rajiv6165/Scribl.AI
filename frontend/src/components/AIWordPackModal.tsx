@@ -102,7 +102,10 @@ export const AIWordPackModal: React.FC<AIWordPackModalProps> = ({
             className="w-full py-3.5 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm shadow-xl shadow-purple-500/30 transition-all flex items-center justify-center gap-2 transform hover:-translate-y-0.5 disabled:opacity-50"
           >
             {loading ? (
-              <span>Generating Words...</span>
+              <div className="flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin"></div>
+                <span>Generating Words...</span>
+              </div>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />

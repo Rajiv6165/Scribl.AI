@@ -40,6 +40,7 @@ export function useRoomSocket({
   const [isSpectatorMode, setIsSpectatorMode] = useState<boolean>(isSpectator);
   const [spectatorCount, setSpectatorCount] = useState<number>(0);
   const [commentaryFeed, setCommentaryFeed] = useState<CommentaryItem[]>([]);
+  const [roomNotFound, setRoomNotFound] = useState<boolean>(false);
 
   // Game Loop, AI, & Roast State
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
@@ -60,6 +61,7 @@ export function useRoomSocket({
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const roomNotFoundRef = useRef<boolean>(false);
 
   const connect = useCallback(() => {
     if (!roomCode || !nickname) return;
@@ -218,6 +220,13 @@ export function useRoomSocket({
               onUndoReceived(data.nickname);
             }
             break;
+
+          case 'error':
+            if (data.message === 'Room not found') {
+              roomNotFoundRef.current = true;
+              setRoomNotFound(true);
+            }
+            break;
         }
       } catch (err) {
         console.error('Error handling WebSocket message:', err);
@@ -226,9 +235,11 @@ export function useRoomSocket({
 
     socket.onclose = () => {
       setConnected(false);
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connect();
-      }, 3000);
+      if (!roomNotFoundRef.current) {
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connect();
+        }, 3000);
+      }
     };
 
     socket.onerror = (error) => {
@@ -397,5 +408,6 @@ export function useRoomSocket({
     sendStroke,
     sendClear,
     sendUndo,
+    roomNotFound,
   };
 }

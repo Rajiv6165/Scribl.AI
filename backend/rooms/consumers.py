@@ -69,6 +69,24 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 }
             )
 
+            if result.get('drawer_disconnected'):
+                end_res = await async_end_round(self.room_code)
+                await self.broadcast_phase_update(end_res)
+                asyncio.create_task(self.trigger_background_roast())
+                asyncio.create_task(self.trigger_spectator_commentary('ROUND_END', {
+                    'round_num': end_res.get('current_round_num', 1),
+                    'drawer': end_res.get('current_drawer', ''),
+                }))
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        'type': 'chat_message_event',
+                        'nickname': 'System',
+                        'text': "⚠️ Drawer disconnected. Ending round early.",
+                        'is_system': True,
+                    }
+                )
+
             await self.channel_layer.group_discard(
                 self.room_group_name,
                 self.channel_name
@@ -118,7 +136,18 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 self.channel_name
             )
 
-        join_data = await async_join_room(self.room_code, nickname, self.channel_name, is_spectator)
+        try:
+            join_data = await async_join_room(self.room_code, nickname, self.channel_name, is_spectator)
+        except ValueError as e:
+            if "does not exist" in str(e).lower():
+                await self.send_json({
+                    'type': 'error',
+                    'message': 'Room not found'
+                })
+                await self.close()
+                return
+            else:
+                raise
         history = await async_get_canvas_history(self.room_code)
 
         await self.send_json({

@@ -1,59 +1,54 @@
-# Scribl.AI — Real-Time Multiplayer Drawing & Guessing App
+# Scribl.AI — Real-Time Multiplayer Drawing & AI Guessing Game
 
-Scribl.AI is a high-performance, production-grade real-time multiplayer drawing and guessing game featuring Voice-Powered Guessing (Web Speech API), an AI Post-Round Drawing Roast Mode (Gemini Vision), AI Match Highlight Recaps, an intelligent AI Player layer, AI-powered theme word pack generation, real-time canvas synchronization, time-based competitive scoring, server-side anti-cheat word validation, stroke-by-stroke replay data storage, and scalable Redis pub/sub.
+[![Demo Video](https://img.shields.io/badge/Demo-Watch_Video-purple?style=for-the-badge&logo=youtube)](#) *(Placeholder for Demo Video)*
 
----
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
+![Django](https://img.shields.io/badge/Django-5.x-092E20?style=flat-square&logo=django)
+![Redis](https://img.shields.io/badge/Redis-Pub%2FSub-DC382D?style=flat-square&logo=redis)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=flat-square&logo=postgresql)
+![Gemini AI](https://img.shields.io/badge/Gemini_AI-Vision-8E75B2?style=flat-square&logo=google)
 
-## 🎙 Phase 4: Voice Guessing & AI Roast Mode Features
-
-### 1. Voice-Powered Guessing (Web Speech API)
-- **Hands-Free Guessing**: Guessers can click the **Voice** button in the chat panel to speak their guess using Chromium/Edge `Web Speech API`.
-- **Live Preview & Indicators**: Features a pulsing red recording status badge and a live transcript banner e.g. `Listening: "elephant"`.
-- **Identical Submission Path**: Transcribed speech is submitted through the exact same `sendGuess()` / `submit_guess()` validation path as typed text, maintaining identical scoring rules.
-
-### 2. AI Post-Round Roast Mode
-- **Good-Natured Art Critique**: After each drawing round ends, Gemini Vision examines the final canvas PNG and generates a short (2-sentence), PG-rated, friendly roast/critique of the drawing.
-- **Non-Blocking Async Delivery**: Roast generation runs asynchronously in the background so round transition modals open instantly without waiting for network calls.
-- **Host Toggle**: Host players can toggle AI Roast Mode ON/OFF in the lobby setting toolbar.
-
-### 3. AI Match Highlight Recap
-- **Final Results Highlights**: When a match concludes (`GAME_END`), AI selects a match highlight drawing and generates a fun 2-sentence highlight summary card e.g. *"✨ Match Highlight: Picasso of the day award goes to Alice's drawing of ELEPHANT for its sheer abstract bravery!"*.
+**Scribl.AI** is a high-performance, production-grade real-time multiplayer drawing and guessing web application. It features a rich tech stack bridging WebSockets, real-time canvas synchronization, and state-of-the-art AI integration. With features like Voice-Powered Guessing, an AI-powered smart bot that guesses human drawings, AI-generated drawing roasts, and server-side anti-cheat, Scribl.AI serves as a comprehensive portfolio showcase for full-stack engineering and AI orchestration.
 
 ---
 
-## 🤖 Phase 3: AI Player & Word Pack Features
+## ✨ Features
 
-### 1. Smart AI Player Bot ("Scribl-Bot")
-- **Human-Like AI Peer**: Scribl-Bot joins rooms as an active player (badged as `BOT`) and guesses what is drawn on canvas using Pillow headless image rendering and Gemini Vision API.
-- **No-Cheat Architecture**: Scribl-Bot has **zero access** to the secret word in the database. It receives only the rendered PNG image of stroke events and the hint length (`_ _ _ _ _`). All AI guesses pass through `RoomService.submit_guess()`.
-- **Dynamic Difficulty Scaling**: Scribl-Bot adjusts its guess delay dynamically based on human player performance (14–20s when humans struggle vs 6–9s when humans are fast).
-
-### 2. AI Theme Word Pack Generator
-- **Custom Themes**: Host players can enter any custom theme (e.g. *"Bollywood Movies"*, *"Startup Buzzwords"*, *"Superhero Gadgets"*, *"Retro 90s"*).
-
----
-
-## 🎮 Game Flow & Core Features
-
-### 1. Turn & Round Management
-- **Round Cycle**: Games default to 3 total rounds. Each round rotates drawing turns across all connected players (including Scribl-Bot).
-- **Phases**: `LOBBY` ➔ `WORD_SELECT` ➔ `DRAWING` ➔ `ROUND_END` ➔ `GAME_END`.
-
-### 2. Server-Side Guessing & Anti-Cheat
-- **Anti-Cheat**: Secret words are hidden server-side. Guessers only see hint underscores e.g. `_ _ _ _ _ _ _ _`.
-- **Dynamic Scoring**:
-  - **Guesser Points**: `500 (Base) + (Time Left % × 500)`. Faster guesses yield up to 1,000 pts per round.
-  - **Drawer Bonus**: `+100 pts` bonus awarded to the drawer per correct guesser.
+- 🎨 **Real-Time Canvas Syncing**: Butter-smooth drawing replication via WebSocket and React state batching, supporting variable brush sizes, colors, undo, and clear.
+- 🗣️ **Voice-Powered Guessing (Web Speech API)**: Hands-free gameplay! Speak your guess into the mic and watch it transcribe and submit automatically.
+- 🤖 **Smart AI Player Bot ("Scribl-Bot")**: An AI peer powered by Gemini Vision that joins your game, renders the canvas strokes headlessly via Pillow, and attempts to guess your drawing dynamically.
+- 🔥 **AI Drawing Roasts & Highlights**: After every round, Gemini Vision examines the final canvas and generates a funny, good-natured roast. At the end of the match, it picks a highlight drawing for a recap card.
+- 🧙‍♂️ **AI Theme Word Packs**: Hosts can generate ~30 themed drawing words on the fly (e.g. "Bollywood Movies", "90s Retro") using Gemini AI.
+- 🛡️ **Server-Side Anti-Cheat**: Secret words never reach the client unmasked (`_ _ _ _`). Robust point calculation prevents cheating.
+- 📹 **Scrubbable Replays**: Every stroke is stored in PostgreSQL. Replay full rounds stroke-by-stroke through an interactive match history modal.
+- 📱 **Mobile Responsive**: Fully responsive grid layouts, touch-enabled drawing canvas, and smart UI collapsing for cross-device compatibility.
+- 📡 **Spectator Mode & Live Commentary**: Join as a spectator with a read-only UI and enjoy an AI-generated play-by-play shoutcast feed of the ongoing game.
 
 ---
 
-## 🏗 Tech Stack
+## 🏗 Architecture Overview
 
-- **Frontend**: Next.js 14 (App Router), TypeScript, Tailwind CSS, HTML5 Canvas API, Web Speech API, Lucide Icons.
-- **Backend**: Django 5.x, Django Channels (ASGI), Daphne, Pillow (PIL), Google Generative AI SDK (Gemini Vision).
-- **Real-Time Layer**: Redis (Pub/Sub for WebSocket group broadcasting).
-- **Database**: PostgreSQL 15 (Rooms, Players, Rounds, Words, Stroke Events).
-- **Containerization**: Docker & Docker Compose.
+Scribl.AI uses an async ASGI architecture with Redis acting as the Pub/Sub broker to handle hundreds of concurrent WebSocket messages. The AI layer operates in non-blocking background tasks to ensure the main game loop remains strictly real-time.
+
+```mermaid
+graph TD
+    Client[Next.js Frontend] <-->|WebSocket: Game State & Strokes| Channels[Django Channels ASGI]
+    Client <-->|REST: Replays & History| Django[Django REST API]
+    Channels <-->|Pub/Sub| Redis[(Redis)]
+    Channels <-->|Read/Write Game State| DB[(PostgreSQL)]
+    Django <-->|Read Replay Data| DB
+    Channels -.->|Background Task: Canvas rendering & Prompts| AI[Gemini Vision API]
+    
+    classDef frontend fill:#3178c6,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef backend fill:#092E20,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef db fill:#DC382D,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef ai fill:#8E75B2,stroke:#fff,stroke-width:2px,color:#fff;
+    
+    class Client frontend;
+    class Channels,Django backend;
+    class Redis,DB db;
+    class AI ai;
+```
 
 ---
 
@@ -95,7 +90,7 @@ Tests cover:
 ### Frontend Production Build
 ```bash
 cd frontend
-node node_modules/next/dist/bin/next build
+npm run build
 ```
 
 ---

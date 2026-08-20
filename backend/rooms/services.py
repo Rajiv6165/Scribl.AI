@@ -209,14 +209,21 @@ class RoomService:
             if player and not player.is_ai:
                 player.is_connected = False
                 player.save(update_fields=['is_connected'])
+            
+            drawer_disconnected = False
+            if (room.current_drawer_nickname and room.current_drawer_nickname.lower() == player_nickname.lower() 
+                and room.phase in [Room.PHASE_WORD_SELECT, Room.PHASE_DRAWING]):
+                drawer_disconnected = True
+
             players_list = RoomService.get_room_players_sync(room)
             return {
                 "room_code": room.code,
                 "player_nickname": player_nickname,
                 "players": players_list,
+                "drawer_disconnected": drawer_disconnected,
             }
         except Room.DoesNotExist:
-            return {"room_code": room_code, "player_nickname": player_nickname, "players": []}
+            return {"room_code": room_code, "player_nickname": player_nickname, "players": [], "drawer_disconnected": False}
 
     @staticmethod
     def get_room_players_sync(room: Room) -> list:

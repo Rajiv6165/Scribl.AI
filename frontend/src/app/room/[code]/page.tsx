@@ -36,6 +36,7 @@ export default function RoomPage() {
   const [activeReplayData, setActiveReplayData] = useState<ReplayData | null>(null);
   const [activeMatchHistory, setActiveMatchHistory] = useState<MatchHistoryData | null>(null);
   const [isLoadingReplay, setIsLoadingReplay] = useState<boolean>(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(false);
 
   const canvasRef = useRef<CanvasRef | null>(null);
 
@@ -69,6 +70,7 @@ export default function RoomPage() {
 
   const handleFetchMatchHistory = async () => {
     try {
+      setIsLoadingHistory(true);
       const apiHost = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const res = await fetch(`${apiHost}/api/rooms/${roomCode}/rounds/`);
       if (!res.ok) throw new Error('Failed to fetch match history');
@@ -76,6 +78,8 @@ export default function RoomPage() {
       setActiveMatchHistory(data);
     } catch (err) {
       console.error('Error fetching match history:', err);
+    } finally {
+      setIsLoadingHistory(false);
     }
   };
 
@@ -129,6 +133,7 @@ export default function RoomPage() {
     sendStroke,
     sendClear,
     sendUndo,
+    roomNotFound,
   } = useRoomSocket({
     roomCode,
     nickname,
@@ -165,8 +170,38 @@ export default function RoomPage() {
     );
   }
 
+  if (roomNotFound) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4">
+        <div className="glass-panel p-8 rounded-3xl max-w-md w-full text-center space-y-6">
+          <div className="w-16 h-16 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Bot className="w-8 h-8 text-rose-400" />
+          </div>
+          <h1 className="text-2xl font-black text-white">Room Not Found</h1>
+          <p className="text-slate-300 font-medium text-sm">
+            The room code <span className="font-bold text-rose-400">{roomCode}</span> doesn't exist or the session has ended.
+          </p>
+          <button
+            onClick={() => router.push('/')}
+            className="w-full py-3 px-4 rounded-xl font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 transition-all shadow-md shadow-purple-500/25"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen p-4 md:p-6 flex flex-col gap-4 max-w-7xl mx-auto">
+    <div className="min-h-screen p-4 md:p-6 flex flex-col gap-4 max-w-7xl mx-auto transition-all duration-300">
+      {/* Reconnecting Overlay */}
+      {!connected && !roomNotFound && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 text-white px-4 py-2 rounded-full border border-rose-500/50 shadow-lg shadow-rose-500/20 flex items-center gap-2 backdrop-blur-md">
+          <div className="w-4 h-4 border-2 border-rose-400 border-t-transparent rounded-full animate-spin"></div>
+          <span className="text-sm font-bold text-rose-200">Reconnecting...</span>
+        </div>
+      )}
+
       {/* Header Bar */}
       <RoomHeader
         roomCode={roomCode}
@@ -220,9 +255,14 @@ export default function RoomPage() {
             <button
               type="button"
               onClick={handleFetchMatchHistory}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all"
+              disabled={isLoadingHistory}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all disabled:opacity-50"
             >
-              <History className="w-3.5 h-3.5" />
+              {isLoadingHistory ? (
+                <div className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></div>
+              ) : (
+                <History className="w-3.5 h-3.5" />
+              )}
               <span>Match History</span>
             </button>
 

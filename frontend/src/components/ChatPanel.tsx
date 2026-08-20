@@ -64,7 +64,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   const isDisabled = isDrawer || hasGuessed || isSpectator;
 
   return (
-    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-3 border border-slate-700/50 h-full max-h-[500px]">
+    <div className="glass-panel p-4 rounded-2xl flex flex-col gap-3 border border-slate-700/50 h-[400px] lg:h-full lg:max-h-[600px]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
         <h3 className="font-bold text-slate-200 text-sm tracking-wide uppercase flex items-center gap-2">

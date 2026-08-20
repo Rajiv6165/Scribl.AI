@@ -55,7 +55,8 @@ export type WSMessageType =
   | 'correct_guess'
   | 'draw_stroke'
   | 'clear_canvas'
-  | 'undo_stroke';
+  | 'undo_stroke'
+  | 'error';
 
 export interface RoomStateMessage {
   type: 'room_state';
@@ -181,7 +182,13 @@ export type IncomingWSMessage =
   | PlayerLeftMessage
   | DrawStrokeMessage
   | ClearCanvasMessage
-  | UndoStrokeMessage;
+  | UndoStrokeMessage
+  | ErrorMessage;
+
+export interface ErrorMessage {
+  type: 'error';
+  message: string;
+}
 
 export interface ReplayGuess {
   nickname: string;
