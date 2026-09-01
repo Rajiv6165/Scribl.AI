@@ -1,5 +1,7 @@
 # Scribl.AI — Real-Time Multiplayer Drawing & AI Guessing Game
 
+[![Backend CI](https://github.com/Rajiv6165/Scribl.AI/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/Rajiv6165/Scribl.AI/actions/workflows/backend-ci.yml)
+[![Frontend CI](https://github.com/Rajiv6165/Scribl.AI/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/Rajiv6165/Scribl.AI/actions/workflows/frontend-ci.yml)
 [![Demo Video](https://img.shields.io/badge/Demo-Watch_Video-purple?style=for-the-badge&logo=youtube)](#) *(Placeholder for Demo Video)*
 
 ![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
@@ -95,7 +97,28 @@ npm run build
 
 ---
 
-## ☁️ Production Deployment
+## ☁️ Production Deployment & CI/CD
+
+### CI/CD Pipeline & Auto-Deploy
+
+This repository uses GitHub Actions for continuous integration:
+- **Backend CI**: Runs the Django test suite against a real PostgreSQL database and Redis service container.
+- **Frontend CI**: Runs ESLint and Next.js production builds to catch TypeScript or build errors.
+
+#### Require Status Checks to Pass
+To ensure the `main` branch stays healthy, enable branch protection in GitHub:
+1. Go to your GitHub Repository **Settings** > **Branches**.
+2. Click **Add branch protection rule** and enter `main` as the branch name pattern.
+3. Check **"Require status checks to pass before merging"**.
+4. Search for and select the `test` (Backend CI) and `build-and-test` (Frontend CI) jobs.
+
+#### Auto-Deploy on Merge (Vercel & Render)
+Render and Vercel natively handle automatic deployments when code is pushed to `main`. Custom GitHub Actions deploy steps are not required.
+- **Vercel (Frontend)**: Connected GitHub repositories automatically deploy pushes to `main`.
+- **Render (Backend)**: When creating the Web Service via GitHub, enable the **Auto-Deploy** setting. It will trigger a new deploy on every push to `main`.
+  - *Note on Migrations*: If a merged PR contains database migrations, configure a **Release Command** in Render (`python manage.py migrate`) so migrations apply automatically before the new server spins up, OR manually run the command in the Render Shell post-deploy.
+
+---
 
 The application is structured to be deployed across three main services:
 1. **Next.js Frontend** (Recommended: Vercel)
