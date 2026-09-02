@@ -14,13 +14,15 @@ class CreateRoomView(APIView):
 
         nickname = serializer.validated_data['nickname']
         max_players = serializer.validated_data.get('max_players', 10)
+        game_mode = serializer.validated_data.get('game_mode', 'classic')
         smart_ai_enabled = request.data.get('smart_ai_enabled', True)
 
         try:
             result = RoomService.create_room(
                 host_nickname=nickname,
                 max_players=max_players,
-                smart_ai_enabled=smart_ai_enabled
+                smart_ai_enabled=smart_ai_enabled,
+                game_mode=game_mode
             )
             return Response(result, status=status.HTTP_201_CREATED)
         except ValueError as err:

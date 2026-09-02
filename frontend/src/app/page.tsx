@@ -12,6 +12,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'join'>('create');
+  const [gameMode, setGameMode] = useState('classic');
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -29,7 +30,7 @@ export default function HomePage() {
       const res = await fetch(`${apiUrl}/api/rooms/create/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nickname: nickname.trim() }),
+        body: JSON.stringify({ nickname: nickname.trim(), game_mode: gameMode }),
       });
 
       const data = await res.json();
@@ -168,6 +169,22 @@ export default function HomePage() {
                   placeholder="e.g. Picasso"
                   className="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5 uppercase tracking-wider">
+                  Game Mode
+                </label>
+                <select
+                  value={gameMode}
+                  onChange={(e) => setGameMode(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900/90 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+                >
+                  <option value="classic">Classic</option>
+                  <option value="speed">Speed Round</option>
+                  <option value="team">Team Mode</option>
+                  <option value="chain_draw">Chain Draw</option>
+                </select>
               </div>
 
               <button

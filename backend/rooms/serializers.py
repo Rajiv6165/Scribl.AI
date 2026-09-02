@@ -5,6 +5,7 @@ from .models import Room, Player, StrokeEvent
 class RoomCreateSerializer(serializers.Serializer):
     nickname = serializers.CharField(max_length=50)
     max_players = serializers.IntegerField(default=10, min_value=2, max_value=20)
+    game_mode = serializers.CharField(max_length=20, default='classic')
 
 
 class RoomJoinSerializer(serializers.Serializer):

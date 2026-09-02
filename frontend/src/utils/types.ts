@@ -31,6 +31,7 @@ export interface Player {
   is_flagged?: boolean;
   anomaly_score?: number;
   score: number;
+  team?: string;
   has_guessed: boolean;
 }
 
@@ -65,6 +66,7 @@ export interface RoomStateMessage {
   is_host: boolean;
   is_spectator?: boolean;
   phase: GamePhase;
+  game_mode?: string;
   smart_ai_enabled: boolean;
   roast_mode_enabled: boolean;
   custom_theme: string;
@@ -95,6 +97,7 @@ export interface GamePhaseChangeMessage {
   timer_start_ms: number;
   timer_duration_sec: number;
   players: Player[];
+  chain_steps?: { step_number: number; player: string; type: string; word: string }[];
 }
 
 export interface DrawingRoastEvent {

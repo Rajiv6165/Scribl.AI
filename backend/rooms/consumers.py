@@ -5,6 +5,7 @@ from channels.db import database_sync_to_async
 from .services import (
     async_join_room,
     async_leave_room,
+    async_switch_team,
     async_toggle_smart_ai,
     async_toggle_roast_mode,
     async_generate_and_apply_custom_word_pack,
@@ -103,6 +104,8 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             await self.handle_join_room(content)
         elif action_type == 'toggle_ai':
             await self.handle_toggle_ai(content)
+        elif action_type == 'switch_team':
+            await self.handle_switch_team(content)
         elif action_type == 'toggle_roast_mode':
             await self.handle_toggle_roast_mode(content)
         elif action_type == 'generate_word_pack':
@@ -181,6 +184,23 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
                 'spectator_count': join_data.get('spectator_count', 0),
             }
         )
+
+    async def handle_switch_team(self, content):
+        team = content.get('team')
+        try:
+            result = await async_switch_team(self.room_code, self.nickname, team)
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'player_joined_event',
+                    'nickname': self.nickname,
+                    'is_spectator': self.is_spectator,
+                    'players': result.get('players', []),
+                    'spectator_count': await async_get_spectator_count(self.room_code),
+                }
+            )
+        except Exception as err:
+            await self.send_json({"error": str(err)})
 
     async def handle_toggle_ai(self, content):
         enabled = content.get('enabled', True)
@@ -268,6 +288,11 @@ class RoomConsumer(AsyncJsonWebsocketConsumer):
             return
 
         result = await async_submit_guess(self.room_code, self.nickname, text)
+
+        if result.get('chain_advance'):
+            next_data = result.get('next_turn_data', {})
+            await self.broadcast_phase_update(next_data)
+            return
 
         if result.get('is_correct'):
             guesser_nickname = result['player_nickname']

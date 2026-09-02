@@ -10,6 +10,7 @@ interface RoundEndModalProps {
   drawingRoast?: string;
   matchRecap?: string;
   players: Player[];
+  chainSteps?: { step_number: number; player: string; type: string; word: string }[];
   timerStartMs: number;
   timerDurationSec: number;
   onWatchReplay?: () => void;
@@ -22,6 +23,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
   drawingRoast,
   matchRecap,
   players,
+  chainSteps,
   timerStartMs,
   timerDurationSec,
   onWatchReplay,
@@ -87,6 +89,28 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
             <div className="inline-block bg-brand-950/80 px-6 py-2 rounded-2xl border border-brand-500/40 text-2xl font-black text-amber-300 tracking-widest font-mono uppercase mb-4 shadow-inner">
               {revealedWord || '---'}
             </div>
+
+            {/* Chain Draw Sequence */}
+            {chainSteps && chainSteps.length > 0 && (
+              <div className="bg-slate-900/60 p-4 rounded-2xl border border-slate-800 mb-6 text-left max-h-60 overflow-y-auto">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Chain Draw Sequence</h4>
+                <div className="space-y-3">
+                  {chainSteps.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-3">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${step.type === 'draw' ? 'bg-purple-500/20 text-purple-400' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                        {step.step_number}
+                      </div>
+                      <div className="flex-1 bg-slate-800/50 p-2.5 rounded-xl border border-slate-700/50 flex justify-between items-center">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{step.player} {step.type === 'draw' ? 'drew' : 'guessed'}</span>
+                          <span className="text-sm font-bold text-slate-200">{step.word}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* AI Post-Round Roast Card */}
             {drawingRoast && (

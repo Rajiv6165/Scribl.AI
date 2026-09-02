@@ -34,6 +34,19 @@ class Room(models.Model):
     roast_mode_enabled = models.BooleanField(default=True)
     custom_theme = models.CharField(max_length=100, blank=True, default='')
 
+    MODE_CLASSIC = 'classic'
+    MODE_SPEED = 'speed'
+    MODE_TEAM = 'team'
+    MODE_CHAIN_DRAW = 'chain_draw'
+    
+    MODE_CHOICES = [
+        (MODE_CLASSIC, 'Classic'),
+        (MODE_SPEED, 'Speed Round'),
+        (MODE_TEAM, 'Team Mode'),
+        (MODE_CHAIN_DRAW, 'Chain Draw'),
+    ]
+    game_mode = models.CharField(max_length=20, choices=MODE_CHOICES, default=MODE_CLASSIC)
+
     current_drawer_nickname = models.CharField(max_length=50, blank=True, default='')
     current_word = models.CharField(max_length=100, blank=True, default='')
     word_hint = models.CharField(max_length=100, blank=True, default='')
@@ -59,6 +72,8 @@ class Player(models.Model):
     is_connected = models.BooleanField(default=True)
     is_ai = models.BooleanField(default=False)
     is_spectator = models.BooleanField(default=False)
+    
+    team = models.CharField(max_length=20, null=True, blank=True)
     
     is_flagged = models.BooleanField(default=False)
     anomaly_score = models.FloatField(default=0.0)
@@ -159,3 +174,26 @@ class Word(models.Model):
 
     def __str__(self):
         return f"{self.word} ({self.difficulty} - {self.category})"
+
+
+class ChainDrawStep(models.Model):
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='chain_draw_steps')
+    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name='chain_draw_steps')
+    step_number = models.IntegerField(default=1)
+    
+    player_nickname = models.CharField(max_length=50)
+    
+    # 'draw' or 'guess'
+    step_type = models.CharField(max_length=10, default='draw')
+    
+    word_to_draw = models.CharField(max_length=100, blank=True, default='')
+    guessed_word = models.CharField(max_length=100, blank=True, default='')
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['round', 'step_number']
+
+    def __str__(self):
+        return f"Chain Step {self.step_number} ({self.step_type}) by {self.player_nickname} in Round {self.round.id}"
+

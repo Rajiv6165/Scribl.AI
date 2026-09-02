@@ -9,8 +9,10 @@ interface ScoreboardProps {
   currentNickname: string;
   currentDrawer: string;
   phase: GamePhase;
+  gameMode?: string;
   isHost: boolean;
   onStartGame: () => void;
+  onSwitchTeam?: (team: string) => void;
 }
 
 export const Scoreboard: React.FC<ScoreboardProps> = ({
@@ -18,8 +20,10 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
   currentNickname,
   currentDrawer,
   phase,
+  gameMode,
   isHost,
   onStartGame,
+  onSwitchTeam,
 }) => {
   // Sort players by score descending
   const sortedPlayers = [...players].sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -88,6 +92,27 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({
                   <span className="text-[11px] font-extrabold text-brand-400">
                     {player.score || 0} pts
                   </span>
+                  {gameMode === 'team' && player.team && (
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded w-max mt-1 ${player.team === 'A' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                      Team {player.team}
+                    </span>
+                  )}
+                  {gameMode === 'team' && isMe && phase === 'LOBBY' && (
+                    <div className="flex gap-1 mt-1.5">
+                      <button
+                        onClick={() => onSwitchTeam?.('A')}
+                        className={`text-[9px] font-bold px-2 py-1 rounded transition-colors ${player.team === 'A' ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                      >
+                        Join Team A
+                      </button>
+                      <button
+                        onClick={() => onSwitchTeam?.('B')}
+                        className={`text-[9px] font-bold px-2 py-1 rounded transition-colors ${player.team === 'B' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
+                      >
+                        Join Team B
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

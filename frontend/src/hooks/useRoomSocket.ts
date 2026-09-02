@@ -44,6 +44,7 @@ export function useRoomSocket({
 
   // Game Loop, AI, & Roast State
   const [phase, setPhase] = useState<GamePhase>('LOBBY');
+  const [gameMode, setGameMode] = useState<string>('classic');
   const [smartAIEnabled, setSmartAIEnabled] = useState<boolean>(true);
   const [roastModeEnabled, setRoastModeEnabled] = useState<boolean>(true);
   const [customTheme, setCustomTheme] = useState<string>('');
@@ -58,6 +59,7 @@ export function useRoomSocket({
   const [timerStartMs, setTimerStartMs] = useState<number>(0);
   const [timerDurationSec, setTimerDurationSec] = useState<number>(80);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chainSteps, setChainSteps] = useState<{ step_number: number; player: string; type: string; word: string }[]>([]);
 
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -92,6 +94,7 @@ export function useRoomSocket({
             setIsHost(data.is_host);
             setIsSpectatorMode(data.is_spectator ?? isSpectator);
             setPhase(data.phase || 'LOBBY');
+            if (data.game_mode) setGameMode(data.game_mode);
             setSmartAIEnabled(data.smart_ai_enabled ?? true);
             setRoastModeEnabled(data.roast_mode_enabled ?? true);
             setCustomTheme(data.custom_theme || '');
@@ -138,6 +141,9 @@ export function useRoomSocket({
 
             if (data.revealed_word) {
               setRevealedWord(data.revealed_word);
+            }
+            if (data.chain_steps) {
+              setChainSteps(data.chain_steps);
             }
 
             if (data.phase === 'WORD_SELECT') {
@@ -376,6 +382,20 @@ export function useRoomSocket({
     }
   }, [nickname, isSpectator]);
 
+  const switchTeam = useCallback(
+    (team: string) => {
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        socketRef.current.send(
+          JSON.stringify({
+            type: 'switch_team',
+            team,
+          })
+        );
+      }
+    },
+    []
+  );
+
   return {
     connected,
     players,
@@ -384,6 +404,7 @@ export function useRoomSocket({
     spectatorCount,
     commentaryFeed,
     phase,
+    gameMode,
     smartAIEnabled,
     roastModeEnabled,
     customTheme,
@@ -398,6 +419,7 @@ export function useRoomSocket({
     timerStartMs,
     timerDurationSec,
     chatMessages,
+    chainSteps,
     toggleSmartAI,
     toggleRoastMode,
     generateWordPack,
@@ -408,6 +430,7 @@ export function useRoomSocket({
     sendStroke,
     sendClear,
     sendUndo,
+    switchTeam,
     roomNotFound,
   };
 }

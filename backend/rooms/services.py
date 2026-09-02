@@ -7,9 +7,20 @@ from .models import Room, Player, StrokeEvent, Round, Word, Guess
 from .word_bank import STARTER_WORDS
 from .ai_service import AIService
 from .anti_cheat import StrokeAnomalyDetector
+from .strategies import ClassicModeStrategy, SpeedRoundModeStrategy, TeamModeStrategy, ChainDrawModeStrategy
 
 
 class RoomService:
+    @staticmethod
+    def _get_strategy(room: Room):
+        if room.game_mode == Room.MODE_SPEED:
+            return SpeedRoundModeStrategy()
+        elif room.game_mode == Room.MODE_TEAM:
+            return TeamModeStrategy()
+        elif room.game_mode == Room.MODE_CHAIN_DRAW:
+            return ChainDrawModeStrategy()
+        return ClassicModeStrategy()
+
 
     @staticmethod
     def seed_word_bank():
@@ -26,7 +37,7 @@ class RoomService:
                 )
 
     @staticmethod
-    def create_room(host_nickname: str, max_players: int = 10, total_rounds: int = 3, smart_ai_enabled: bool = True, roast_mode_enabled: bool = True) -> dict:
+    def create_room(host_nickname: str, max_players: int = 10, total_rounds: int = 3, smart_ai_enabled: bool = True, roast_mode_enabled: bool = True, game_mode: str = 'classic') -> dict:
         """Create a new room and assign host player."""
         host_nickname = host_nickname.strip()
         if not host_nickname:
@@ -41,6 +52,7 @@ class RoomService:
                 total_rounds=total_rounds,
                 smart_ai_enabled=smart_ai_enabled,
                 roast_mode_enabled=roast_mode_enabled,
+                game_mode=game_mode,
                 phase=Room.PHASE_LOBBY
             )
             player = Player.objects.create(
@@ -60,6 +72,7 @@ class RoomService:
                 "host_nickname": host_nickname,
                 "status": room.phase,
                 "phase": room.phase,
+                "game_mode": room.game_mode,
                 "max_players": room.max_players,
                 "total_rounds": room.total_rounds,
                 "smart_ai_enabled": room.smart_ai_enabled,
@@ -145,6 +158,24 @@ class RoomService:
         }
 
     @staticmethod
+    def switch_team(room_code: str, player_nickname: str, team: str) -> dict:
+        room = Room.objects.get(code=room_code.upper())
+        if room.phase != Room.PHASE_LOBBY:
+            raise ValueError("Can only switch teams in lobby.")
+            
+        player = Player.objects.filter(room=room, nickname=player_nickname).first()
+        if not player:
+            raise ValueError(f"Player {player_nickname} not found.")
+            
+        player.team = team if team in ['A', 'B'] else None
+        player.save(update_fields=['team'])
+        
+        return {
+            "room_code": room.code,
+            "players": RoomService.get_room_players_sync(room)
+        }
+
+    @staticmethod
     def join_room(room_code: str, player_nickname: str, session_id: str, is_spectator: bool = False) -> dict:
         """Join an existing room or update connection status."""
         room_code = room_code.upper().strip()
@@ -187,6 +218,7 @@ class RoomService:
             "is_spectator": player.is_spectator,
             "status": room.phase,
             "phase": room.phase,
+            "game_mode": room.game_mode,
             "smart_ai_enabled": room.smart_ai_enabled,
             "roast_mode_enabled": room.roast_mode_enabled,
             "custom_theme": room.custom_theme,
@@ -239,6 +271,7 @@ class RoomService:
                 "is_flagged": p.is_flagged,
                 "anomaly_score": p.anomaly_score,
                 "score": p.score,
+                "team": p.team,
                 "has_guessed": p.has_guessed,
             }
             for p in players
@@ -255,197 +288,34 @@ class RoomService:
         room = Room.objects.get(code=room_code.upper())
         if room.host_name.lower() != host_nickname.lower():
             raise ValueError("Only the host can start the game.")
-
-        connected_players = list(
-            Player.objects.filter(room=room, is_connected=True, is_spectator=False)
-            .values_list('nickname', flat=True)
-        )
-
-        if not connected_players:
-            raise ValueError("No connected players in room.")
-
-        random.shuffle(connected_players)
-
-        Player.objects.filter(room=room).update(score=0, has_guessed=False, guess_order=0)
-
-        room.turn_order = connected_players
-        room.current_turn_index = 0
-        room.current_round_num = 1
-        room.save(update_fields=['turn_order', 'current_turn_index', 'current_round_num'])
-
-        return RoomService.start_word_selection(room_code)
+        
+        strategy = RoomService._get_strategy(room)
+        return strategy.start_game(room)
 
     @staticmethod
     def start_word_selection(room_code: str) -> dict:
         """Begin word selection phase for current turn's drawer."""
         room = Room.objects.get(code=room_code.upper())
-        turn_order = room.turn_order or []
-
-        if not turn_order or room.current_turn_index >= len(turn_order):
-            room.current_turn_index = 0
-
-        drawer_nickname = turn_order[room.current_turn_index]
-        room.current_drawer_nickname = drawer_nickname
-        room.phase = Room.PHASE_WORD_SELECT
-        room.current_word = ''
-        room.word_hint = ''
-        room.timer_start_ms = int(time.time() * 1000)
-        room.timer_duration_sec = 10
-        room.save(update_fields=[
-            'current_drawer_nickname', 'phase', 'current_word',
-            'word_hint', 'timer_start_ms', 'timer_duration_sec', 'current_turn_index'
-        ])
-
-        Player.objects.filter(room=room).update(has_guessed=False, guess_order=0)
-        StrokeEvent.objects.filter(room=room).delete()
-
-        custom_words = list(Word.objects.filter(room=room).values_list('word', flat=True))
-        if len(custom_words) >= 3:
-            choices = random.sample(custom_words, 3)
-        else:
-            words = list(Word.objects.filter(room=None).values_list('word', flat=True))
-            if len(words) < 3:
-                words = ["CAT", "HOUSE", "ELEPHANT"]
-            choices = random.sample(words, 3)
-
-        return {
-            "room_code": room.code,
-            "phase": room.phase,
-            "current_round_num": room.current_round_num,
-            "total_rounds": room.total_rounds,
-            "current_drawer": drawer_nickname,
-            "word_choices": choices,
-            "timer_start_ms": room.timer_start_ms,
-            "timer_duration_sec": room.timer_duration_sec,
-            "players": RoomService.get_room_players_sync(room),
-        }
+        strategy = RoomService._get_strategy(room)
+        return strategy.start_word_selection(room)
 
     @staticmethod
     def select_word(room_code: str, drawer_nickname: str, chosen_word: str) -> dict:
         """Drawer picks word to begin drawing phase."""
         room = Room.objects.get(code=room_code.upper())
-
-        if room.current_drawer_nickname.lower() != drawer_nickname.lower():
-            raise ValueError("Only the current drawer can select the word.")
-
-        word_clean = chosen_word.upper().strip()
-        room.current_word = word_clean
-        
-        hint_chars = []
-        for char in word_clean:
-            if char.isalpha():
-                hint_chars.append('_')
-            else:
-                hint_chars.append(char)
-        room.word_hint = ' '.join(hint_chars)
-
-        room.phase = Room.PHASE_DRAWING
-        room.timer_start_ms = int(time.time() * 1000)
-        room.timer_duration_sec = 80
-        room.save(update_fields=['current_word', 'word_hint', 'phase', 'timer_start_ms', 'timer_duration_sec'])
-
-        # Mark previous active rounds completed
-        Round.objects.filter(room=room, status=Round.STATUS_ACTIVE).update(
-            status=Round.STATUS_COMPLETED,
-            ended_at=timezone.now()
-        )
-
-        # Create new active round instance
-        Round.objects.create(
-            room=room,
-            round_number=room.current_round_num,
-            drawer_nickname=room.current_drawer_nickname,
-            word=word_clean,
-            status=Round.STATUS_ACTIVE,
-            started_at=timezone.now()
-        )
-
-        return {
-            "room_code": room.code,
-            "phase": room.phase,
-            "current_round_num": room.current_round_num,
-            "total_rounds": room.total_rounds,
-            "current_drawer": room.current_drawer_nickname,
-            "word_hint": room.word_hint,
-            "word_length": len(word_clean),
-            "timer_start_ms": room.timer_start_ms,
-            "timer_duration_sec": room.timer_duration_sec,
-            "players": RoomService.get_room_players_sync(room),
-        }
+        strategy = RoomService._get_strategy(room)
+        return strategy.select_word(room, drawer_nickname, chosen_word)
 
     @staticmethod
     def submit_guess(room_code: str, player_nickname: str, text: str) -> dict:
         """Validate player guess against current secret word."""
         room = Room.objects.get(code=room_code.upper())
-
-        if room.phase != Room.PHASE_DRAWING:
-            return {"is_correct": False, "reason": "Not in drawing phase."}
-
         player = Player.objects.filter(room=room, nickname=player_nickname).first()
         if not player:
             raise ValueError(f"Player {player_nickname} not found.")
 
-        if player_nickname.lower() == room.current_drawer_nickname.lower() or player.has_guessed:
-            return {"is_correct": False, "reason": "Drawer or already guessed."}
-
-        clean_text = text.strip().upper()
-        target_word = room.current_word.upper().strip()
-        is_correct = (clean_text == target_word)
-        guesser_pts = 0
-
-        active_round = room.rounds.filter(status=Round.STATUS_ACTIVE).last()
-
-        if is_correct:
-            now_ms = int(time.time() * 1000)
-            elapsed_sec = max(0, (now_ms - room.timer_start_ms) / 1000.0)
-            time_left_sec = max(0.0, room.timer_duration_sec - elapsed_sec)
-
-            time_ratio = time_left_sec / float(room.timer_duration_sec)
-            guesser_pts = 500 + int(time_ratio * 500)
-
-            player.score += guesser_pts
-            player.has_guessed = True
-            
-            previous_guessers = Player.objects.filter(room=room, has_guessed=True).count()
-            player.guess_order = previous_guessers + 1
-            player.save(update_fields=['score', 'has_guessed', 'guess_order'])
-
-            drawer = Player.objects.filter(room=room, nickname=room.current_drawer_nickname).first()
-            if drawer:
-                drawer.score += 100
-                drawer.save(update_fields=['score'])
-
-            non_drawers = Player.objects.filter(room=room, is_connected=True).exclude(nickname=room.current_drawer_nickname)
-            all_guessed = non_drawers.filter(has_guessed=False).count() == 0
-
-            if active_round:
-                Guess.objects.create(
-                    round=active_round,
-                    player_nickname=player.nickname,
-                    text=text,
-                    is_correct=True,
-                    points_awarded=guesser_pts
-                )
-
-            return {
-                "is_correct": True,
-                "player_nickname": player.nickname,
-                "guesser_points": guesser_pts,
-                "total_score": player.score,
-                "all_guessed": all_guessed,
-                "players": RoomService.get_room_players_sync(room),
-            }
-
-        if active_round:
-            Guess.objects.create(
-                round=active_round,
-                player_nickname=player.nickname,
-                text=text,
-                is_correct=False,
-                points_awarded=0
-            )
-
-        return {"is_correct": False, "text": text}
+        strategy = RoomService._get_strategy(room)
+        return strategy.submit_guess(room, player, text)
 
     @staticmethod
     def execute_ai_guess_attempt(room_code: str) -> dict:
@@ -532,56 +402,15 @@ class RoomService:
     def end_round(room_code: str) -> dict:
         """End current drawing round, reveal word, and show round summary."""
         room = Room.objects.get(code=room_code.upper())
-        room.phase = Room.PHASE_ROUND_END
-        room.timer_start_ms = int(time.time() * 1000)
-        room.timer_duration_sec = 10
-        room.save(update_fields=['phase', 'timer_start_ms', 'timer_duration_sec'])
-
-        active_round = room.rounds.filter(status=Round.STATUS_ACTIVE).last()
-        if active_round:
-            active_round.status = Round.STATUS_COMPLETED
-            active_round.ended_at = timezone.now()
-            active_round.save(update_fields=['status', 'ended_at'])
-
-        players_list = RoomService.get_room_players_sync(room)
-
-        return {
-            "room_code": room.code,
-            "phase": room.phase,
-            "roast_mode_enabled": room.roast_mode_enabled,
-            "revealed_word": room.current_word,
-            "current_drawer": room.current_drawer_nickname,
-            "round_id": active_round.id if active_round else None,
-            "timer_start_ms": room.timer_start_ms,
-            "timer_duration_sec": room.timer_duration_sec,
-            "players": players_list,
-        }
+        strategy = RoomService._get_strategy(room)
+        return strategy.end_round(room)
 
     @staticmethod
     def next_turn(room_code: str) -> dict:
         """Rotate to next drawer or increment round / end game."""
         room = Room.objects.get(code=room_code.upper())
-        turn_order = room.turn_order or []
-
-        next_turn_idx = room.current_turn_index + 1
-
-        if next_turn_idx >= len(turn_order):
-            next_turn_idx = 0
-            room.current_round_num += 1
-
-        if room.current_round_num > room.total_rounds:
-            room.phase = Room.PHASE_GAME_END
-            room.save(update_fields=['phase', 'current_round_num'])
-            return {
-                "room_code": room.code,
-                "phase": room.phase,
-                "players": RoomService.get_room_players_sync(room),
-            }
-
-        room.current_turn_index = next_turn_idx
-        room.save(update_fields=['current_turn_index', 'current_round_num'])
-
-        return RoomService.start_word_selection(room_code)
+        strategy = RoomService._get_strategy(room)
+        return strategy.next_turn(room)
 
     @staticmethod
     def record_stroke_event(room_code: str, player_nickname: str, action_type: str, payload: dict) -> dict:
@@ -791,6 +620,7 @@ class RoomService:
 async_create_room = database_sync_to_async(RoomService.create_room)
 async_join_room = database_sync_to_async(RoomService.join_room)
 async_leave_room = database_sync_to_async(RoomService.leave_room)
+async_switch_team = database_sync_to_async(RoomService.switch_team)
 async_toggle_smart_ai = database_sync_to_async(RoomService.toggle_smart_ai)
 async_toggle_roast_mode = database_sync_to_async(RoomService.toggle_roast_mode)
 async_generate_and_apply_custom_word_pack = database_sync_to_async(RoomService.generate_and_apply_custom_word_pack)
