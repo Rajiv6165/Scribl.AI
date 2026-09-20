@@ -44,6 +44,11 @@ if env('TESTING', default='0') == '1':
             'BACKEND': 'channels.layers.InMemoryChannelLayer',
         },
     }
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 else:
     CHANNEL_LAYERS = {
         'default': {
@@ -52,4 +57,13 @@ else:
                 "hosts": [(REDIS_HOST, int(REDIS_PORT))],
             },
         },
+    }
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/1',
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
     }
