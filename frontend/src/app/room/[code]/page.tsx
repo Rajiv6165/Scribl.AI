@@ -308,10 +308,8 @@ export default function RoomPage() {
             currentNickname={nickname}
             currentDrawer={currentDrawer}
             phase={phase}
-            gameMode={gameMode}
             isHost={isHost}
             onStartGame={startGame}
-            onSwitchTeam={switchTeam}
           />
         </div>
 
@@ -388,7 +386,6 @@ export default function RoomPage() {
           drawingRoast={drawingRoast}
           matchRecap={matchRecap}
           players={players}
-          chainSteps={chainSteps}
           timerStartMs={timerStartMs}
           timerDurationSec={timerDurationSec}
           onWatchReplay={() => handleFetchRoundReplay()}

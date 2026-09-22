@@ -180,7 +180,7 @@ export default function StatsPage() {
                     cy="50%"
                     outerRadius={100}
                     innerRadius={60}
-                    label={({ mode, rounds_played }) => `${mode} (${rounds_played})`}
+                    label={({ name, value }) => `${name} (${value})`}
                   >
                     {data.mode_popularity.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

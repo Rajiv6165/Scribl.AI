@@ -4,10 +4,10 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
-from .models import Room, Player, StrokeEvent, Word, Round, Guess
-from .services import RoomService
-from .ai_service import AIService
-from .anti_cheat import StrokeAnomalyDetector
+from rooms.models import Room, Player, StrokeEvent, Word, Round, Guess
+from rooms.services import RoomService
+from rooms.ai_service import AIService
+from rooms.anti_cheat import StrokeAnomalyDetector
 
 
 class RoomServicePhase4Test(TestCase):
