@@ -45,7 +45,7 @@ export const WordSelectModal: React.FC<WordSelectModalProps> = ({
           <Sparkles className="w-7 h-7" />
         </div>
 
-        <h2 className="text-2xl font-extrabold text-white mb-1">It's Your Turn to Draw!</h2>
+        <h2 className="text-2xl font-extrabold text-white mb-1">It&apos;s Your Turn to Draw!</h2>
         <p className="text-slate-400 text-sm mb-6">Pick a word to start drawing for the room:</p>
 
         {/* Word Options */}

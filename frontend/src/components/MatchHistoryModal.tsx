@@ -115,7 +115,7 @@ export const MatchHistoryModal: React.FC<MatchHistoryModalProps> = ({
                         Round {round.round_number}
                       </span>
                       <span className="text-sm font-black text-amber-300 tracking-wide uppercase font-mono">
-                        "{round.word}"
+                        &quot;{round.word}&quot;
                       </span>
                     </div>
 

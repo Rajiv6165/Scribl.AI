@@ -122,7 +122,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({
                     AI Drawing Roast
                   </h4>
                 </div>
-                <p className="text-xs text-purple-100 italic leading-relaxed">"{drawingRoast}"</p>
+                <p className="text-xs text-purple-100 italic leading-relaxed">&quot;{drawingRoast}&quot;</p>
               </div>
             )}
           </>

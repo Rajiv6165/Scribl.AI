@@ -103,7 +103,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
       {isListening && (
         <div className="p-2 rounded-xl bg-purple-950/60 border border-purple-800/60 text-purple-300 text-[11px] font-semibold flex items-center gap-2 animate-pulse">
           <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-          <span>Listening: "{transcript || 'Speak your guess now...'}"</span>
+          <span>Listening: &quot;{transcript || 'Speak your guess now...'}&quot;</span>
         </div>
       )}
 

@@ -179,7 +179,7 @@ export default function RoomPage() {
           </div>
           <h1 className="text-2xl font-black text-white">Room Not Found</h1>
           <p className="text-slate-300 font-medium text-sm">
-            The room code <span className="font-bold text-rose-400">{roomCode}</span> doesn't exist or the session has ended.
+            The room code <span className="font-bold text-rose-400">{roomCode}</span> doesn&apos;t exist or the session has ended.
           </p>
           <button
             onClick={() => router.push('/')}

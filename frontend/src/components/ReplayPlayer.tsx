@@ -236,7 +236,7 @@ export const ReplayPlayer: React.FC<ReplayPlayerProps> = ({ replayData, onClose 
               <div>
                 <span className="font-bold">{hoveredGuess.nickname}: </span>
                 <span className={hoveredGuess.is_correct ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
-                  "{hoveredGuess.text}"
+                  &quot;{hoveredGuess.text}&quot;
                 </span>
                 {hoveredGuess.is_correct && <span className="ml-1 text-emerald-400">✓ Correct</span>}
               </div>
@@ -342,7 +342,7 @@ export const ReplayPlayer: React.FC<ReplayPlayerProps> = ({ replayData, onClose 
                 >
                   {g.is_correct && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
                   <span>{g.nickname}:</span>
-                  <span className="font-mono">"{g.text}"</span>
+                  <span className="font-mono">&quot;{g.text}&quot;</span>
                 </div>
               ))}
             </div>
